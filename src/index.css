@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #14b8a6;
+  --color-primary-light: #5eead4;
+}
+
+html:not(.dark) {
+  --c-bg: #ffffff;
+  --c-surface: #f3f4f6;
+  --c-surface-half: rgba(243, 244, 246, 0.5);
+  --c-surface-hover: #e5e7eb;
+  --c-border: #d1d5db;
+  --c-border-half: rgba(209, 213, 219, 0.5);
+  --c-border-subtle: #e5e7eb;
+  --c-text: #1f2937;
+  --c-text-strong: #111827;
+  --c-text-muted: #6b7280;
+  --c-text-subtle: #4b5563;
+  --c-text-on-input: #374151;
+  --c-accent: #0d9488;
+  --c-inactive: #d1d5db;
+  --c-line: #9ca3af;
+  --color-accent-green: #34d399;
+  --color-accent-red: #f87171;
+  --color-accent-yellow: #fbbf24;
+
+  --c-fb-bg: #e5e7eb;
+  --c-fb-nut: #374151;
+  --c-fb-fret: #d1d5db;
+  --c-fb-string: #9ca3af;
+  --c-fb-label: #6b7280;
+  --c-fb-number: #9ca3af;
+  --c-fb-marker: #d1d5db;
+  --c-fb-note-bg: #9ca3af;
+  --c-fb-note-text: #374151;
+  --c-fb-scale-bg: #99f6e4;
+  --c-fb-scale-text: #0d9488;
+
+  color-scheme: light;
+}
+
+.dark {
+  --c-bg: #1e1b2e;
+  --c-surface: #2a2640;
+  --c-surface-half: rgba(42, 38, 64, 0.5);
+  --c-surface-hover: #3b3560;
+  --c-border: #3b3560;
+  --c-border-half: rgba(59, 53, 96, 0.5);
+  --c-border-subtle: #2a2640;
+  --c-text: #e2e0f0;
+  --c-text-strong: #ffffff;
+  --c-text-muted: #9490b0;
+  --c-text-subtle: #c4c0e0;
+  --c-text-on-input: #c4c0e0;
+  --c-accent: #5eead4;
+  --c-inactive: #4a4660;
+  --c-line: #6b6590;
+  --color-accent-green: #34d399;
+  --color-accent-red: #f87171;
+  --color-accent-yellow: #fbbf24;
+
+  --c-fb-bg: #1a1730;
+  --c-fb-nut: #e2e0f0;
+  --c-fb-fret: #3b3560;
+  --c-fb-string: #6b6590;
+  --c-fb-label: #9490b0;
+  --c-fb-number: #6b6590;
+  --c-fb-marker: #2a2640;
+  --c-fb-note-bg: #4a4660;
+  --c-fb-note-text: #c4c0e0;
+  --c-fb-scale-bg: #3b3560;
+  --c-fb-scale-text: #5eead4;
+
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 4px currentColor); }
+  50% { filter: drop-shadow(0 0 12px currentColor); }
+}
+
+@keyframes note-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.animate-note-pop {
+  animation: note-pop 0.25s ease-out;
+}
