@@ -3,10 +3,9 @@ import {
   generateFretboard,
   getScalePositions,
   getPositionId,
-  STRING_LABELS,
   NUM_FRETS,
   type FretPosition,
-  type UkuleleTuning,
+  type InstrumentTuning,
 } from '../../theory/fretboard';
 import { getScaleNotes } from '../../theory/scales';
 import type { NoteName } from '../../theory/notes';
@@ -14,7 +13,7 @@ import { FretboardNote } from './FretboardNote';
 import { FretMarkers } from './FretMarkers';
 
 interface FretboardProps {
-  tuning: UkuleleTuning;
+  tuning: InstrumentTuning;
   root: NoteName;
   scaleKey: string;
   showScale: boolean;
@@ -23,6 +22,7 @@ interface FretboardProps {
   targetPosition?: FretPosition | null;
   playedPositionIds?: Set<string>;
   chordPositionIds?: Set<string>;
+  onNoteClick?: (note: NoteName, octave: number) => void;
 }
 
 const PADDING = { top: 40, bottom: 30, left: 55, right: 20 };
@@ -39,6 +39,7 @@ export function Fretboard({
   targetPosition,
   playedPositionIds,
   chordPositionIds,
+  onNoteClick,
 }: FretboardProps) {
   const fretboard = useMemo(() => generateFretboard(tuning), [tuning]);
   const scaleNotes = useMemo(() => getScaleNotes(root, scaleKey), [root, scaleKey]);
@@ -51,7 +52,8 @@ export function Fretboard({
     [scalePositions],
   );
 
-  const numStrings = 4;
+  const stringLabels = useMemo(() => tuning.strings.map((s) => s.note), [tuning]);
+  const numStrings = tuning.strings.length;
   const boardHeight = PADDING.top + (numStrings - 1) * STRING_SPACING + PADDING.bottom;
 
   const fretWidths = useMemo(() => {
@@ -93,10 +95,11 @@ export function Fretboard({
   const targetId = targetPosition ? getPositionId(targetPosition) : null;
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0">
       <svg
         viewBox={`0 0 ${boardWidth} ${boardHeight}`}
-        className="w-full min-w-[700px] max-h-[260px]"
+        className="w-full h-auto max-h-[160px] sm:max-h-[220px] lg:max-h-[260px]"
+        preserveAspectRatio="xMidYMid meet"
       >
         {/* Background */}
         <rect
@@ -152,9 +155,9 @@ export function Fretboard({
         })}
 
         {/* String labels */}
-        {STRING_LABELS.map((label, s) => (
+        {stringLabels.map((label, s) => (
           <text
-            key={label}
+            key={`${label}-${s}`}
             x={PADDING.left - 20}
             y={stringY(s)}
             textAnchor="middle"
@@ -214,6 +217,7 @@ export function Fretboard({
               isScaleTone={isScaleTone}
               isPlayed={isPlayed}
               isChordTone={isChordTone}
+              onClick={onNoteClick ? () => onNoteClick(pos.note, pos.octave) : undefined}
             />
           );
         })}

@@ -1,15 +1,19 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   getSession,
   getAnalysis,
   triggerAnalysis,
-  getAudioUrl,
+  resolveAudioUrl,
   type SessionDetail,
   type AnalysisResult,
 } from '../api/sessionApi';
 import { AudioWaveform } from './AudioWaveform';
 import { StringWaveform } from './StringWaveform';
+import { PlaybackFftVisualizer } from './PlaybackFftVisualizer';
+import { SheetMusicScore } from './SheetMusicScore';
+import { sessionNotesToMelody } from '../theory/staff';
 import { SCALE_DEFINITIONS } from '../theory/scales';
+import { findTuningByKey } from '../theory/fretboard';
 
 interface SessionPlaybackProps {
   sessionId: string;
@@ -25,6 +29,7 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -44,9 +49,9 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
           try {
             const a = await getAnalysis(sessionId);
             if (!cancelled) setAnalysis(a);
-          } catch { /* analysis cache may not exist yet */ }
+          } catch { /* analysis may not exist yet */ }
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) setError('Failed to load session');
       } finally {
         if (!cancelled) setLoading(false);
@@ -54,6 +59,18 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
     })();
     return () => { cancelled = true; };
   }, [sessionId]);
+
+  useEffect(() => {
+    if (!session?.hasAudio) {
+      setResolvedAudioUrl(null);
+      return;
+    }
+    let cancelled = false;
+    resolveAudioUrl(sessionId).then((url) => {
+      if (!cancelled) setResolvedAudioUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [sessionId, session?.hasAudio]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -102,79 +119,110 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
     }
   }, [updateTime]);
 
-  const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const seekTo = useCallback((time: number) => {
     const audio = audioRef.current;
-    if (!audio || !duration) return;
+    if (!audio) return;
+    audio.currentTime = time;
+    setCurrentTime(time);
+  }, []);
+
+  const handleSeekBar = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    audio.currentTime = fraction * duration;
-    setCurrentTime(audio.currentTime);
-  }, [duration]);
+    seekTo(fraction * duration);
+  }, [duration, seekTo]);
 
   useEffect(() => {
     return () => cancelAnimationFrame(animFrameRef.current);
   }, []);
 
+  const melodyNotes = useMemo(
+    () => session ? sessionNotesToMelody(session.notes, session.startedAt) : [],
+    [session],
+  );
+
   if (loading) {
-    return <div className="text-center py-12 text-[var(--c-text-muted)]">Loading session...</div>;
+    return <div className="text-center py-12 text-(--c-text-muted)">Loading session...</div>;
   }
 
   if (error || !session) {
     return (
       <div className="text-center py-12">
         <p className="text-red-400 mb-3">{error ?? 'Session not found'}</p>
-        <button onClick={onBack} className="text-sm text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)]">
+        <button onClick={onBack} className="text-sm text-(--c-text-muted) hover:text-(--c-text-strong)">
           Back to library
         </button>
       </div>
     );
   }
 
-  const scaleDef = SCALE_DEFINITIONS[session.scaleKey];
+  const scaleLabel = session.scaleKey === 'melody' ? 'Song' : (SCALE_DEFINITIONS[session.scaleKey]?.name ?? session.scaleKey);
   const formatTime = (s: number) => {
+    if (!isFinite(s) || isNaN(s)) return '0:00';
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
+  const audioUrl = resolvedAudioUrl;
+  const pitchColor = session.pitchAccuracy >= 80 ? '#34d399' : session.pitchAccuracy >= 50 ? '#fbbf24' : '#f87171';
+  const timingColor = session.timingOnTimePercent >= 75 ? '#34d399' : session.timingOnTimePercent >= 40 ? '#fbbf24' : '#f87171';
+  const scoreColor = session.overallScore >= 70 ? '#34d399' : session.overallScore >= 40 ? '#fbbf24' : '#f87171';
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-3" ref={containerRef}>
+      {/* Header row */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
+          title="Back to library"
           className="text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] transition p-1"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M19 12H5M5 12l7 7M5 12l7-7" />
           </svg>
         </button>
-        <div>
-          <h2 className="text-lg font-bold text-[var(--c-text-strong)]">
-            {session.root} {scaleDef?.name ?? session.scaleKey}
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-bold text-[var(--c-text-strong)] leading-tight">
+            {session.scaleKey === 'melody' ? 'Song recording' : `${session.root} ${scaleLabel}`}
           </h2>
-          <p className="text-xs text-[var(--c-text-muted)]">
+          <p className="text-[10px] text-[var(--c-text-muted)] leading-tight">
             {new Date(session.createdAt).toLocaleString()} &middot; {session.bpm} BPM &middot; {Math.round(session.durationSec)}s
           </p>
         </div>
+
+        {/* Inline stats */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="text-center">
+            <div className="text-sm font-bold leading-none" style={{ color: pitchColor }}>{session.pitchAccuracy}%</div>
+            <div className="text-[9px] text-[var(--c-text-muted)] uppercase leading-tight">Pitch</div>
+          </div>
+          <div className="w-px h-5 bg-[var(--c-border)]" />
+          <div className="text-center">
+            <div className="text-sm font-bold leading-none" style={{ color: timingColor }}>{session.timingOnTimePercent}%</div>
+            <div className="text-[9px] text-[var(--c-text-muted)] uppercase leading-tight">Timing</div>
+          </div>
+          <div className="w-px h-5 bg-[var(--c-border)]" />
+          <div className="text-center">
+            <div className="text-sm font-bold leading-none" style={{ color: scoreColor }}>{session.overallScore}</div>
+            <div className="text-[9px] text-[var(--c-text-muted)] uppercase leading-tight">Score</div>
+          </div>
+        </div>
       </div>
 
-      {/* Stats summary */}
-      <div className="grid grid-cols-3 gap-2">
-        <SmallStat label="Pitch" value={`${session.pitchAccuracy}%`} color={session.pitchAccuracy >= 80 ? '#34d399' : '#fbbf24'} />
-        <SmallStat label="Timing" value={`${session.timingOnTimePercent}%`} color={session.timingOnTimePercent >= 75 ? '#34d399' : '#fbbf24'} />
-        <SmallStat label="Score" value={`${session.overallScore}`} color={session.overallScore >= 60 ? '#34d399' : '#fbbf24'} />
-      </div>
-
-      {/* Audio player */}
-      {session.hasAudio && (
-        <div className="bg-[var(--c-surface)] rounded-xl p-4 border border-[var(--c-border)]">
+      {/* Audio player + visualizations */}
+      {audioUrl && (
+        <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] overflow-hidden">
           <audio
             ref={audioRef}
-            src={getAudioUrl(sessionId)}
+            src={audioUrl}
             preload="metadata"
             onLoadedMetadata={() => {
-              if (audioRef.current) setDuration(audioRef.current.duration);
+              if (audioRef.current) {
+                const d = audioRef.current.duration;
+                setDuration(isFinite(d) ? d : 0);
+              }
             }}
             onEnded={() => {
               setIsPlaying(false);
@@ -182,119 +230,148 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
             }}
           />
 
-          <div className="flex items-center gap-3 mb-3">
+          {/* Transport bar */}
+          <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--c-border)]">
             <button
               onClick={handlePlayPause}
-              className="w-9 h-9 rounded-full flex items-center justify-center bg-teal-600 hover:bg-teal-500 text-white transition shrink-0"
+              className="w-7 h-7 rounded-full flex items-center justify-center bg-teal-600 hover:bg-teal-500 text-white transition shrink-0"
             >
               {isPlaying ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor">
                   <rect x="2" y="1" width="3.5" height="12" rx="1" />
                   <rect x="8.5" y="1" width="3.5" height="12" rx="1" />
                 </svg>
               ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor">
                   <polygon points="3,0 14,7 3,14" />
                 </svg>
               )}
             </button>
 
-            <div className="flex-1 cursor-pointer" onClick={handleSeek}>
-              <div className="h-2 bg-[var(--c-bg)] rounded-full overflow-hidden">
+            <div className="flex-1 cursor-pointer" onClick={handleSeekBar}>
+              <div className="h-1.5 bg-[var(--c-bg)] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-teal-500 rounded-full transition-[width] duration-100"
+                  className="h-full bg-teal-500 rounded-full transition-[width] duration-75"
                   style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
                 />
               </div>
             </div>
 
-            <span className="text-xs font-mono text-[var(--c-text-muted)] w-[80px] text-right">
+            <span className="text-[10px] font-mono text-[var(--c-text-muted)] tabular-nums shrink-0">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
 
-          {/* Audio waveform */}
-          <div ref={containerRef} className="mt-3">
-            <div className="text-xs text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-2">
-              Waveform
-            </div>
-            <AudioWaveform
-              audioUrl={getAudioUrl(sessionId)}
-              currentTime={currentTime}
-              duration={duration}
-              width={waveformWidth}
-              height={80}
-              onSeek={(t) => {
-                if (audioRef.current) {
-                  audioRef.current.currentTime = t;
-                  setCurrentTime(t);
-                }
-              }}
-            />
-          </div>
-
-          {/* Per-string waveform */}
-          {analysis && (
-            <div className="mt-3" onClick={handleSeek}>
-              <div className="text-xs text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-2">
-                Per-String Energy
+          {/* Visualizations stack */}
+          <div className="px-3 py-2 space-y-2">
+            {/* FFT + Waveform side-by-side on wider screens, stacked on narrow */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-2">
+              <div>
+                <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
+                  FFT Spectrum
+                </div>
+                <PlaybackFftVisualizer
+                  audioUrl={audioUrl}
+                  currentTime={currentTime}
+                  duration={duration}
+                  isPlaying={isPlaying}
+                  height={80}
+                />
               </div>
-              <StringWaveform
-                frames={analysis.frames}
-                durationSec={analysis.durationSec}
-                currentTime={currentTime}
-                width={waveformWidth}
-                height={200}
-              />
-            </div>
-          )}
 
-          {!analysis && session.analysisStatus !== 'complete' && (
-            <div className="text-center py-4">
-              <button
-                onClick={handleRunAnalysis}
-                disabled={analyzing}
-                className="px-4 py-2 bg-teal-600/20 text-teal-400 rounded-lg text-sm font-medium hover:bg-teal-600/30 transition disabled:opacity-50"
-              >
-                {analyzing ? 'Analyzing...' : 'Run String Analysis'}
-              </button>
-              <p className="text-xs text-[var(--c-text-muted)] mt-1">
-                Separate audio into per-string waveforms using FFT
-              </p>
+              <div>
+                <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
+                  Waveform
+                </div>
+                <AudioWaveform
+                  audioUrl={audioUrl}
+                  currentTime={currentTime}
+                  duration={duration}
+                  width={waveformWidth > 800 ? Math.floor((waveformWidth - 30) / 2) : waveformWidth - 24}
+                  height={80}
+                  onSeek={seekTo}
+                />
+              </div>
             </div>
-          )}
+
+            {/* Per-string energy — full width */}
+            {analysis && (
+              <div>
+                <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
+                  Per-String Energy
+                </div>
+                <StringWaveform
+                  frames={analysis.frames}
+                  durationSec={analysis.durationSec}
+                  currentTime={currentTime}
+                  width={waveformWidth - 24}
+                  height={130}
+                  stringNames={findTuningByKey(session.tuningKey)?.strings.map((s) => s.note)}
+                />
+              </div>
+            )}
+
+            {!analysis && session.analysisStatus !== 'complete' && (
+              <div className="flex items-center gap-3 py-1">
+                <button
+                  onClick={handleRunAnalysis}
+                  disabled={analyzing}
+                  className="px-3 py-1 bg-teal-600/20 text-teal-400 rounded-lg text-xs font-medium hover:bg-teal-600/30 transition disabled:opacity-50"
+                >
+                  {analyzing ? 'Analyzing...' : 'Run String Analysis'}
+                </button>
+                <span className="text-[10px] text-[var(--c-text-muted)]">
+                  Separate audio into per-string waveforms
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {!session.hasAudio && (
-        <div className="bg-[var(--c-surface)] rounded-xl p-6 border border-[var(--c-border)] text-center">
-          <p className="text-[var(--c-text-muted)]">No audio recording for this session</p>
+      {!audioUrl && (
+        <div className="bg-[var(--c-surface)] rounded-xl p-4 border border-[var(--c-border)] text-center">
+          <p className="text-[var(--c-text-muted)] text-sm">No audio recording for this session</p>
         </div>
+      )}
+
+      {/* Sheet music */}
+      {melodyNotes.length > 0 && (
+        <SheetMusicScore notes={melodyNotes} title="Sheet Music" />
       )}
 
       {/* Note timeline */}
       {session.notes.length > 0 && (
-        <div className="bg-[var(--c-surface)] rounded-xl p-4 border border-[var(--c-border)]">
-          <div className="text-xs text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-3">
+        <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] overflow-hidden">
+          <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider px-3 py-1.5 border-b border-[var(--c-border)]">
             Notes Played ({session.notes.length})
           </div>
-          <div className="max-h-[300px] overflow-y-auto space-y-1">
+          <div className="max-h-[200px] overflow-y-auto">
             {session.notes.map((n, i) => {
               const relTime = ((n.timestamp - session.startedAt) / 1000).toFixed(1);
+              const isActive = audioUrl && duration > 0
+                && Math.abs(currentTime - (n.timestamp - session.startedAt) / 1000) < 0.3;
               return (
-                <div key={i} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-[var(--c-bg)]">
-                  <span className="w-[40px] text-right font-mono text-[var(--c-text-muted)]">{relTime}s</span>
-                  <span className={`font-bold w-[28px] ${n.wasCorrect ? 'text-emerald-400' : 'text-red-400'}`}>
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-xs px-3 py-1 transition-colors ${isActive ? 'bg-teal-500/10' : ''}`}
+                  onClick={() => seekTo((n.timestamp - session.startedAt) / 1000)}
+                  style={{ cursor: audioUrl ? 'pointer' : 'default' }}
+                >
+                  <span className="w-[36px] text-right font-mono text-[var(--c-text-muted)] tabular-nums">{relTime}s</span>
+                  <span className={`font-bold w-[20px] ${n.wasCorrect ? 'text-emerald-400' : 'text-red-400'}`}>
                     {n.note}
                   </span>
-                  <span className="text-[var(--c-text-muted)] w-[36px] text-right">
-                    {n.cents > 0 ? '+' : ''}{n.cents}&#162;
+                  <span className="text-[var(--c-text-muted)] w-[32px] text-right tabular-nums">
+                    {n.cents > 0 ? '+' : ''}{n.cents}\u00A2
                   </span>
-                  <span className="text-[var(--c-text-muted)] w-[48px] text-right">
-                    {n.beatOffset > 0 ? '+' : ''}{n.beatOffset}ms
-                  </span>
+                  {n.beatOffset !== null && n.beatOffset !== 0 && (
+                    <span className="text-[var(--c-text-muted)] w-[44px] text-right tabular-nums">
+                      {n.beatOffset > 0 ? '+' : ''}{n.beatOffset}ms
+                    </span>
+                  )}
                   {n.expectedNote && n.expectedNote !== n.note && (
-                    <span className="text-red-400/60 text-[10px]">(expected {n.expectedNote})</span>
+                    <span className="text-red-400/60 text-[10px]">exp: {n.expectedNote}</span>
                   )}
                 </div>
               );
@@ -302,15 +379,6 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function SmallStat({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="bg-[var(--c-surface)] rounded-lg p-2.5 text-center border border-[var(--c-border)]">
-      <div className="text-base font-bold" style={{ color }}>{value}</div>
-      <div className="text-[10px] text-[var(--c-text-muted)] uppercase tracking-wider">{label}</div>
     </div>
   );
 }

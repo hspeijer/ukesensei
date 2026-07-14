@@ -1,18 +1,23 @@
 import { type NoteName, semitoneToNote, noteToSemitone } from './notes';
 
+export type Instrument = 'ukulele' | 'bass' | 'guitar';
+
 export interface FretPosition {
-  string: number;   // 0-3 (G=0, C=1, E=2, A=3)
+  string: number;   // string index, 0 = topmost string as drawn on the fretboard
   fret: number;     // 0 = open, 1-15
   note: NoteName;
   octave: number;
 }
 
-export interface UkuleleTuning {
+export interface InstrumentTuning {
   name: string;
   strings: { note: NoteName; octave: number }[];
 }
 
-export const TUNINGS: Record<string, UkuleleTuning> = {
+/** @deprecated use InstrumentTuning */
+export type UkuleleTuning = InstrumentTuning;
+
+export const TUNINGS: Record<string, InstrumentTuning> = {
   standard: {
     name: 'Standard (High G)',
     strings: [
@@ -33,12 +38,66 @@ export const TUNINGS: Record<string, UkuleleTuning> = {
   },
 };
 
-export const STRING_LABELS = ['G', 'C', 'E', 'A'];
+/**
+ * Bass tunings, strings ordered top-to-bottom the way they're drawn on the fretboard
+ * (thinnest first). Keys are namespaced with a `bass_` prefix so they stay distinct
+ * from ukulele tuning keys when stored as a flat string (e.g. in session metadata).
+ */
+export const BASS_TUNINGS: Record<string, InstrumentTuning> = {
+  bass_standard: {
+    name: 'Standard (E-A-D-G)',
+    strings: [
+      { note: 'G', octave: 2 },
+      { note: 'D', octave: 2 },
+      { note: 'A', octave: 1 },
+      { note: 'E', octave: 1 },
+    ],
+  },
+};
+
+/**
+ * Guitar tunings, strings ordered top-to-bottom the way they're drawn on the fretboard
+ * (thinnest first), matching the ordering convention used for bass tunings.
+ */
+export const GUITAR_TUNINGS: Record<string, InstrumentTuning> = {
+  guitar_standard: {
+    name: 'Standard (E-A-D-G-B-E)',
+    strings: [
+      { note: 'E', octave: 4 },
+      { note: 'B', octave: 3 },
+      { note: 'G', octave: 3 },
+      { note: 'D', octave: 3 },
+      { note: 'A', octave: 2 },
+      { note: 'E', octave: 2 },
+    ],
+  },
+};
+
+export const TUNINGS_BY_INSTRUMENT: Record<Instrument, Record<string, InstrumentTuning>> = {
+  ukulele: TUNINGS,
+  bass: BASS_TUNINGS,
+  guitar: GUITAR_TUNINGS,
+};
+
+export const DEFAULT_TUNING_KEY: Record<Instrument, string> = {
+  ukulele: 'low_g',
+  bass: 'bass_standard',
+  guitar: 'guitar_standard',
+};
+
+/** Look up a tuning by its flat key regardless of which instrument it belongs to. */
+export function findTuningByKey(tuningKey: string): InstrumentTuning | null {
+  for (const tunings of Object.values(TUNINGS_BY_INSTRUMENT)) {
+    if (tunings[tuningKey]) return tunings[tuningKey];
+  }
+  return null;
+}
+
 export const NUM_FRETS = 15;
 export const FRET_MARKERS = [5, 7, 10, 12];
 export const DOUBLE_FRET_MARKERS = [12];
 
-export function generateFretboard(tuning: UkuleleTuning = TUNINGS.standard): FretPosition[] {
+export function generateFretboard(tuning: InstrumentTuning = TUNINGS.standard): FretPosition[] {
   const positions: FretPosition[] = [];
 
   for (let s = 0; s < tuning.strings.length; s++) {

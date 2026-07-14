@@ -27,6 +27,14 @@ const TUNINGS: Record<string, TuningConfig> = {
       { name: 'A', fundamental: 440, harmonics: [880, 1320, 1760] },
     ],
   },
+  bass_standard: {
+    strings: [
+      { name: 'G', fundamental: 98, harmonics: [196, 294, 392] },
+      { name: 'D', fundamental: 73.4, harmonics: [146.8, 220.2, 293.6] },
+      { name: 'A', fundamental: 55, harmonics: [110, 165, 220] },
+      { name: 'E', fundamental: 41.2, harmonics: [82.4, 123.6, 164.8] },
+    ],
+  },
 };
 
 function hannWindow(size: number): Float32Array {

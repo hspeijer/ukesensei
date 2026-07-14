@@ -25,6 +25,7 @@ lerna-debug.log*
 *.local
 .env
 .env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -39,3 +40,4 @@ lerna-debug.log*
 
 # OS files
 Thumbs.db
+.vercel

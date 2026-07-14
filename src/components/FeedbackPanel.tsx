@@ -1,9 +1,18 @@
 import type { ExerciseState } from '../store/useAppStore';
 import { displayNote } from '../theory/notes';
 import { SCALE_DEFINITIONS, SCALE_KEYS } from '../theory/scales';
-import type { ExerciseResult } from '../exercises/types';
 import { SessionReport } from './SessionReport';
 import type { SessionResult } from '../exercises/useSession';
+
+export interface CheckpointGate {
+  passed: boolean;
+  accuracy: number;
+  requiredAccuracy: number;
+  isLastLesson: boolean;
+  onContinue: () => void;
+  onRetry: () => void;
+  onExit: () => void;
+}
 
 interface FeedbackPanelProps {
   exercise: ExerciseState;
@@ -11,6 +20,10 @@ interface FeedbackPanelProps {
   onNextExercise: () => void;
   onBackToExercises: () => void;
   sessionResult?: SessionResult | null;
+  checkpoint?: CheckpointGate | null;
+  /** True when the exercise belongs to a lesson (practice drill). Hides the
+   * "next scale" action and routes "back" to the lesson. */
+  lessonContext?: boolean;
 }
 
 export function FeedbackPanel({
@@ -19,7 +32,14 @@ export function FeedbackPanel({
   onNextExercise,
   onBackToExercises,
   sessionResult,
+  checkpoint,
+  lessonContext,
 }: FeedbackPanelProps) {
+  // Lesson checkpoint gate takes precedence: this is the "you can't pass until
+  // you complete the exercise" screen.
+  if (checkpoint) {
+    return <CheckpointPanel exercise={exercise} gate={checkpoint} />;
+  }
   if (sessionResult && sessionResult.notes.length > 0) {
     return (
       <SessionReport
@@ -27,6 +47,7 @@ export function FeedbackPanel({
         onPlayAgain={onPlayAgain}
         onNextExercise={onNextExercise}
         onBackToExercises={onBackToExercises}
+        lessonContext={lessonContext}
       />
     );
   }
@@ -57,7 +78,7 @@ export function FeedbackPanel({
         <div className="text-4xl mb-2">{rating.emoji}</div>
         <h2 className="text-xl font-bold text-[var(--c-text-strong)]">{rating.title}</h2>
         <p className="text-sm text-[var(--c-text-muted)] mt-1">
-          {displayNote(exercise.root)} {scaleDef?.name}
+          {exercise.title ?? `${displayNote(exercise.root)} ${scaleDef?.name ?? ''}`}
         </p>
       </div>
 
@@ -82,19 +103,104 @@ export function FeedbackPanel({
           onClick={onPlayAgain}
           className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium text-sm transition-all"
         >
-          Play Again
+          {lessonContext ? 'Practice Again' : 'Play Again'}
         </button>
-        <button
-          onClick={onNextExercise}
-          className="px-4 py-2.5 bg-[var(--c-bg)] hover:bg-[var(--c-surface-hover)] text-[var(--c-accent)] rounded-lg font-medium text-sm transition-all border border-[var(--c-border)]"
-        >
-          Next Scale
-        </button>
+        {!lessonContext && (
+          <button
+            onClick={onNextExercise}
+            className="px-4 py-2.5 bg-[var(--c-bg)] hover:bg-[var(--c-surface-hover)] text-[var(--c-accent)] rounded-lg font-medium text-sm transition-all border border-[var(--c-border)]"
+          >
+            Next Scale
+          </button>
+        )}
         <button
           onClick={onBackToExercises}
           className="px-4 py-2 text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] text-sm transition-all"
         >
-          Back to exercises
+          {lessonContext ? 'Back to lesson' : 'Back to exercises'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CheckpointPanel({ exercise, gate }: { exercise: ExerciseState; gate: CheckpointGate }) {
+  const { passed, accuracy, requiredAccuracy, isLastLesson, onContinue, onRetry, onExit } = gate;
+  const pct = Math.round(accuracy * 100);
+  const reqPct = Math.round(requiredAccuracy * 100);
+
+  return (
+    <div className="bg-[var(--c-surface)] rounded-xl p-6 border border-[var(--c-border)] max-w-md mx-auto">
+      <div className="text-center mb-5">
+        <div
+          className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-3 ${
+            passed ? 'bg-emerald-500/20' : 'bg-amber-500/20'
+          }`}
+        >
+          {passed ? (
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          ) : (
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 4v6h6M3.51 15a9 9 0 102.13-9.36L1 10" />
+            </svg>
+          )}
+        </div>
+        <h2 className="text-xl font-bold text-[var(--c-text-strong)]">
+          {passed ? 'Checkpoint Passed!' : 'Not Quite Yet'}
+        </h2>
+        <p className="text-sm text-[var(--c-text-muted)] mt-1">{exercise.title}</p>
+      </div>
+
+      {/* Accuracy vs requirement */}
+      <div className="bg-[var(--c-bg)] rounded-lg p-4 mb-5">
+        <div className="flex items-end justify-between mb-2">
+          <span className="text-xs text-[var(--c-text-muted)] uppercase tracking-wider">Your accuracy</span>
+          <span className="text-2xl font-bold" style={{ color: passed ? '#34d399' : '#fbbf24' }}>
+            {pct}%
+          </span>
+        </div>
+        <div className="relative h-2 bg-[var(--c-surface)] rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${pct}%`, background: passed ? '#34d399' : '#fbbf24' }}
+          />
+          {/* Required threshold marker */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-[var(--c-text-strong)]"
+            style={{ left: `${reqPct}%` }}
+          />
+        </div>
+        <p className="text-xs text-[var(--c-text-muted)] mt-2">
+          {passed
+            ? `You beat the ${reqPct}% target. The next lesson is unlocked.`
+            : `You need ${reqPct}% to pass. Keep practicing this one — you've got it.`}
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col gap-2">
+        {passed ? (
+          <button
+            onClick={onContinue}
+            className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium text-sm transition-all"
+          >
+            {isLastLesson ? 'Finish Course' : 'Continue to Next Lesson'}
+          </button>
+        ) : (
+          <button
+            onClick={onRetry}
+            className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium text-sm transition-all"
+          >
+            Try Again
+          </button>
+        )}
+        <button
+          onClick={onExit}
+          className="px-4 py-2 text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] text-sm transition-all"
+        >
+          Back to lesson path
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { SessionResult } from '../exercises/useSession';
-import { analyzeSession, type SessionAnalysisResult } from '../exercises/sessionAnalysis';
+import { analyzeSession } from '../exercises/sessionAnalysis';
 import { displayNote } from '../theory/notes';
 import { SCALE_DEFINITIONS } from '../theory/scales';
 
@@ -9,6 +9,7 @@ interface SessionReportProps {
   onPlayAgain: () => void;
   onNextExercise: () => void;
   onBackToExercises: () => void;
+  lessonContext?: boolean;
 }
 
 export function SessionReport({
@@ -16,6 +17,7 @@ export function SessionReport({
   onPlayAgain,
   onNextExercise,
   onBackToExercises,
+  lessonContext,
 }: SessionReportProps) {
   const analysis = useMemo(() => analyzeSession(session), [session]);
   const scaleDef = SCALE_DEFINITIONS[session.scaleKey];
@@ -121,19 +123,21 @@ export function SessionReport({
           onClick={onPlayAgain}
           className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium text-sm transition-all"
         >
-          Play Again
+          {lessonContext ? 'Practice Again' : 'Play Again'}
         </button>
-        <button
-          onClick={onNextExercise}
-          className="px-4 py-2.5 bg-[var(--c-bg)] hover:bg-[var(--c-surface-hover)] text-[var(--c-accent)] rounded-lg font-medium text-sm transition-all border border-[var(--c-border)]"
-        >
-          Next Scale
-        </button>
+        {!lessonContext && (
+          <button
+            onClick={onNextExercise}
+            className="px-4 py-2.5 bg-[var(--c-bg)] hover:bg-[var(--c-surface-hover)] text-[var(--c-accent)] rounded-lg font-medium text-sm transition-all border border-[var(--c-border)]"
+          >
+            Next Scale
+          </button>
+        )}
         <button
           onClick={onBackToExercises}
           className="px-4 py-2 text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] text-sm transition-all"
         >
-          Back to exercises
+          {lessonContext ? 'Back to lesson' : 'Back to exercises'}
         </button>
       </div>
     </div>
@@ -178,7 +182,6 @@ function TimingTimeline({ notes }: { notes: { offset: number; correct: boolean }
       </div>
       {notes.map((n, i) => {
         const clamped = Math.max(-maxOffset, Math.min(maxOffset, n.offset));
-        const normalized = (clamped + maxOffset) / (2 * maxOffset);
         const height = Math.max(2, Math.abs(clamped) / maxOffset * 16);
         const isLate = clamped > 0;
         const color = n.correct

@@ -43,8 +43,10 @@ impl PitchDetector {
         let mut max_val = f32::NEG_INFINITY;
         let mut max_idx = 0;
 
+        // Floor of 30 Hz reaches below a bass low-E string (~41 Hz) with headroom,
+        // while staying well within the analysis buffer length at typical sample rates.
         let min_tau = (self.sample_rate / 1200.0).ceil() as usize;
-        let max_tau = (self.sample_rate / 60.0).floor() as usize;
+        let max_tau = (self.sample_rate / 30.0).floor() as usize;
         let search_end = n.min(max_tau + 1);
 
         for tau in min_tau..search_end {

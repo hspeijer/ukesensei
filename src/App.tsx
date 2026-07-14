@@ -3,6 +3,9 @@ import { useAppStore } from './store/useAppStore';
 import { useWasmAudio } from './audio/useWasmAudio';
 import { useMetronome } from './audio/useMetronome';
 import { useAudioRecorder } from './audio/useAudioRecorder';
+import { useUkeSynth } from './audio/useUkeSynth';
+import { useBassSynth } from './audio/useBassSynth';
+import { useGuitarSynth } from './audio/useGuitarSynth';
 import { useExercise } from './exercises/useExercise';
 import { useSession, type SessionResult } from './exercises/useSession';
 import { uploadSession, triggerAnalysis, type UploadMetadata } from './api/sessionApi';
@@ -11,6 +14,7 @@ import { Layout } from './components/Layout';
 import { Fretboard } from './components/Fretboard/Fretboard';
 import { AudioStatus } from './components/AudioStatus';
 import { NoteDisplay } from './components/NoteDisplay';
+import { LiveStaff } from './components/LiveStaff';
 import { CentsMeter } from './components/CentsMeter';
 import { ExerciseSelector } from './components/ExerciseSelector';
 import { ExercisePlayer, getPlayedPositionIds } from './components/ExercisePlayer';
@@ -18,12 +22,20 @@ import { FeedbackPanel } from './components/FeedbackPanel';
 import { Metronome } from './components/Metronome';
 import { SessionLibrary } from './components/SessionLibrary';
 import { SessionPlayback } from './components/SessionPlayback';
+import { LessonPath } from './components/LessonPath';
+import { LessonDetail } from './components/LessonDetail';
 import { SCALE_DEFINITIONS, SCALE_KEYS } from './theory/scales';
 import { CHROMATIC_NOTES, type NoteName } from './theory/notes';
-import { useGpuChordDetection } from './audio/useGpuChordDetection';
+import { useChordDetection } from './audio/useChordDetection';
 import { ChordDisplay } from './components/ChordDisplay';
 import { FftVisualizer } from './components/FftVisualizer';
+import { SongRecorder } from './components/SongRecorder';
 import { getVoicingFretPositions } from './theory/chords';
+import { getCurriculumForInstrument } from './lessons/registry';
+import type { Lesson, PracticeExercise } from './lessons/types';
+import type { FretPosition } from './theory/fretboard';
+import { syncCompleteLesson, syncResetLessonProgress } from './storage/progressSync';
+import { useUrlSync } from './routing/useUrlSync';
 
 export default function App() {
   const view = useAppStore((s) => s.view);
@@ -37,6 +49,8 @@ export default function App() {
   const showScale = useAppStore((s) => s.showScale);
   const setShowScale = useAppStore((s) => s.setShowScale);
   const clearExercise = useAppStore((s) => s.clearExercise);
+  const instrument = useAppStore((s) => s.instrument);
+  const setInstrument = useAppStore((s) => s.setInstrument);
   const tuningKey = useAppStore((s) => s.tuningKey);
   const tuning = useAppStore((s) => s.tuning);
   const setTuning = useAppStore((s) => s.setTuning);
@@ -48,13 +62,25 @@ export default function App() {
   const audioLevel = useAppStore((s) => s.audioLevel);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const setSelectedSessionId = useAppStore((s) => s.setSelectedSessionId);
+  const completedLessons = useAppStore((s) => s.completedLessons);
+  const selectedLessonId = useAppStore((s) => s.selectedLessonId);
+  const setSelectedLessonId = useAppStore((s) => s.setSelectedLessonId);
+
+  const curriculum = useMemo(() => getCurriculumForInstrument(instrument), [instrument]);
+
+  useUrlSync();
 
   const mic = useWasmAudio();
+  const ukeSynth = useUkeSynth();
+  const bassSynth = useBassSynth();
+  const guitarSynth = useGuitarSynth();
+  const synth = instrument === 'bass' ? bassSynth : instrument === 'guitar' ? guitarSynth : ukeSynth;
 
   const metronome = useMetronome();
   const recorder = useAudioRecorder();
-  const { exercise, begin } = useExercise({ getNearestBeatOffset: metronome.getNearestBeatOffset });
-  const { chord: detectedChord } = useGpuChordDetection(detectedNote);
+  const { exercise, begin, beginCustom } = useExercise({ getNearestBeatOffset: metronome.getNearestBeatOffset });
+  // Chord detection/display only makes sense for chorded instruments like the ukulele.
+  const detectedChord = useChordDetection(instrument === 'ukulele' ? detectedNote : null);
 
   const [sessionResult, setSessionResult] = useState<SessionResult | null>(null);
 
@@ -91,6 +117,16 @@ export default function App() {
     if (exercise?.isComplete && !wasCompleteRef.current) {
       wasCompleteRef.current = true;
       if (exercise.bpm) metronome.stop();
+
+      // Lesson checkpoint gating: mark the lesson complete if the player passed.
+      if (exercise.lessonId && exercise.requiredAccuracy != null) {
+        const total = exercise.targetPositions.length;
+        const correct = exercise.notesPlayed.filter((n) => n.correct).length;
+        const acc = total > 0 ? correct / total : 0;
+        if (acc >= exercise.requiredAccuracy) {
+          syncCompleteLesson(exercise.lessonId);
+        }
+      }
 
       (async () => {
         const audioBlob = recorder.isRecording ? await recorder.stopRecording() : null;
@@ -144,6 +180,40 @@ export default function App() {
     }
   }, [mic, setListening]);
 
+  // Shared launcher for custom (lesson) exercises: checkpoints and practice drills.
+  const startCustomExercise = useCallback(async (opts: {
+    positions: FretPosition[];
+    root: NoteName;
+    scaleKey: string;
+    title: string;
+    lessonId?: string;
+    requiredAccuracy?: number;
+    bpm: number | null;
+  }) => {
+    setSessionResult(null);
+    session.clearSession();
+    recorder.clearRecording();
+    prevNoteCountRef.current = 0;
+
+    if (!mic.isActive) {
+      await mic.start();
+      setListening(true);
+    }
+
+    if (opts.bpm) {
+      metronome.setBpm(opts.bpm);
+      metronome.start(true, () => {
+        const stream = mic.getStream();
+        if (stream) recorder.startRecording(stream);
+      });
+    } else {
+      const stream = mic.getStream();
+      if (stream) recorder.startRecording(stream);
+    }
+
+    beginCustom(opts);
+  }, [beginCustom, metronome, session, recorder, mic, setListening]);
+
   const lastLoopsRef = useRef(3);
   const handleStartExercise = useCallback(async (bpm: number | null, loops: number = 3) => {
     lastLoopsRef.current = loops;
@@ -171,28 +241,53 @@ export default function App() {
   }, [begin, selectedRoot, selectedScale, metronome, session, recorder, mic, setListening]);
 
   const handlePlayAgain = useCallback(() => {
-    if (exercise) {
-      setSessionResult(null);
-      session.clearSession();
-      recorder.clearRecording();
-      prevNoteCountRef.current = 0;
+    if (!exercise) return;
 
-      if (exercise.bpm) {
-        metronome.setBpm(exercise.bpm);
-        metronome.start(true, () => {
-          const stream = mic.getStream();
-          if (stream) recorder.startRecording(stream);
-        });
-      } else {
+    // Custom (lesson) exercises replay their exact note sequence.
+    if (exercise.title) {
+      startCustomExercise({
+        positions: exercise.targetPositions,
+        root: exercise.root,
+        scaleKey: exercise.scaleKey,
+        title: exercise.title,
+        lessonId: exercise.lessonId,
+        requiredAccuracy: exercise.requiredAccuracy,
+        bpm: exercise.bpm,
+      });
+      return;
+    }
+
+    setSessionResult(null);
+    session.clearSession();
+    recorder.clearRecording();
+    prevNoteCountRef.current = 0;
+
+    if (exercise.bpm) {
+      metronome.setBpm(exercise.bpm);
+      metronome.start(true, () => {
         const stream = mic.getStream();
         if (stream) recorder.startRecording(stream);
-      }
-      begin(exercise.root, exercise.scaleKey, 'both', exercise.bpm, lastLoopsRef.current);
+      });
+    } else {
+      const stream = mic.getStream();
+      if (stream) recorder.startRecording(stream);
     }
-  }, [begin, exercise, metronome, session, recorder, mic]);
+    begin(exercise.root, exercise.scaleKey, 'both', exercise.bpm, lastLoopsRef.current);
+  }, [begin, exercise, metronome, session, recorder, mic, startCustomExercise]);
 
   const handleNextExercise = useCallback(() => {
     if (!exercise) return;
+
+    // Lesson exercises have no "next scale"; return to the lesson instead.
+    if (exercise.lessonId) {
+      const lessonId = exercise.lessonId;
+      setSessionResult(null);
+      clearExercise();
+      setSelectedLessonId(lessonId);
+      setView('lessons');
+      return;
+    }
+
     const currentScaleIdx = SCALE_KEYS.indexOf(exercise.scaleKey);
     const currentRootIdx = CHROMATIC_NOTES.indexOf(exercise.root);
 
@@ -232,6 +327,7 @@ export default function App() {
   }, [begin, exercise, metronome, session, recorder, mic]);
 
   const handleStopExercise = useCallback(() => {
+    const lessonId = exercise?.lessonId;
     metronome.stop();
     if (recorder.isRecording) recorder.stopRecording();
     session.clearSession();
@@ -239,7 +335,11 @@ export default function App() {
     setSessionResult(null);
     prevNoteCountRef.current = 0;
     clearExercise();
-  }, [metronome, session, recorder, clearExercise]);
+    if (lessonId) {
+      setSelectedLessonId(lessonId);
+      setView('lessons');
+    }
+  }, [metronome, session, recorder, clearExercise, exercise, setView]);
 
   const handleSelectSession = useCallback((id: string) => {
     setSelectedSessionId(id);
@@ -250,6 +350,59 @@ export default function App() {
     setSelectedSessionId(null);
     setView('library');
   }, [setSelectedSessionId, setView]);
+
+  const runCheckpoint = useCallback((lesson: Lesson) => {
+    if (!curriculum) return;
+    const { checkpoint } = lesson;
+    startCustomExercise({
+      positions: curriculum.resolvePositions(checkpoint.positions),
+      root: checkpoint.root,
+      scaleKey: checkpoint.scaleKey,
+      title: checkpoint.title,
+      lessonId: lesson.id,
+      requiredAccuracy: checkpoint.requiredAccuracy,
+      bpm: checkpoint.bpm,
+    });
+  }, [startCustomExercise, curriculum]);
+
+  const handleStartCheckpoint = useCallback(() => {
+    const lesson = selectedLessonId && curriculum ? curriculum.getLessonById(selectedLessonId) : undefined;
+    if (lesson) runCheckpoint(lesson);
+  }, [selectedLessonId, runCheckpoint, curriculum]);
+
+  const handleStartPractice = useCallback((practice: PracticeExercise) => {
+    if (!curriculum) return;
+    startCustomExercise({
+      positions: curriculum.resolvePositions(practice.positions),
+      root: practice.root,
+      scaleKey: practice.scaleKey,
+      title: practice.title,
+      lessonId: selectedLessonId ?? undefined,
+      bpm: practice.bpm,
+    });
+  }, [startCustomExercise, selectedLessonId, curriculum]);
+
+  const handleCheckpointContinue = useCallback(() => {
+    const lessonId = exercise?.lessonId;
+    setSessionResult(null);
+    clearExercise();
+    if (lessonId && curriculum) {
+      setSelectedLessonId(curriculum.getNextLessonId(lessonId));
+    }
+    setView('lessons');
+  }, [exercise, clearExercise, setView, curriculum]);
+
+  const handleCheckpointRetry = useCallback(() => {
+    const lessonId = exercise?.lessonId;
+    const lesson = lessonId && curriculum ? curriculum.getLessonById(lessonId) : undefined;
+    if (lesson) runCheckpoint(lesson);
+  }, [exercise, runCheckpoint, curriculum]);
+
+  const handleCheckpointExit = useCallback(() => {
+    setSessionResult(null);
+    clearExercise();
+    setView('lessons');
+  }, [clearExercise, setView]);
 
   const targetPosition = exercise && !exercise.isComplete
     ? exercise.targetPositions[exercise.currentNoteIndex] ?? null
@@ -269,11 +422,31 @@ export default function App() {
     return new Set(positions.map((p) => `s${p.string}f${p.fret}`));
   }, [detectedChord]);
 
+  const checkpointGate = useMemo(() => {
+    if (!exercise?.isComplete || !exercise.lessonId || exercise.requiredAccuracy == null) {
+      return null;
+    }
+    const total = exercise.targetPositions.length;
+    const correct = exercise.notesPlayed.filter((n) => n.correct).length;
+    const accuracy = total > 0 ? correct / total : 0;
+    return {
+      passed: accuracy >= exercise.requiredAccuracy,
+      accuracy,
+      requiredAccuracy: exercise.requiredAccuracy,
+      isLastLesson: curriculum ? curriculum.getNextLessonId(exercise.lessonId) === null : true,
+      onContinue: handleCheckpointContinue,
+      onRetry: handleCheckpointRetry,
+      onExit: handleCheckpointExit,
+    };
+  }, [exercise, handleCheckpointContinue, handleCheckpointRetry, handleCheckpointExit, curriculum]);
+
   // Library and playback views render without the fretboard/exercise UI
   if (view === 'library') {
     return (
-      <Layout view={view} onViewChange={setView} tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}>
+      <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
+        tuningKey={tuningKey} onTuningChange={setTuning}
+        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        lessonsAvailable={!!curriculum}>
         <SessionLibrary onSelectSession={handleSelectSession} />
       </Layout>
     );
@@ -281,9 +454,39 @@ export default function App() {
 
   if (view === 'playback' && selectedSessionId) {
     return (
-      <Layout view={view} onViewChange={setView} tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}>
+      <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
+        tuningKey={tuningKey} onTuningChange={setTuning}
+        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        lessonsAvailable={!!curriculum}>
         <SessionPlayback sessionId={selectedSessionId} onBack={handleBackToLibrary} />
+      </Layout>
+    );
+  }
+
+  if (view === 'lessons' && curriculum) {
+    const lesson = selectedLessonId ? curriculum.getLessonById(selectedLessonId) : undefined;
+    return (
+      <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
+        tuningKey={tuningKey} onTuningChange={setTuning}
+        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        lessonsAvailable={!!curriculum}>
+        {lesson ? (
+          <LessonDetail
+            curriculum={curriculum}
+            lesson={lesson}
+            completed={completedLessons.includes(lesson.id)}
+            onStartCheckpoint={handleStartCheckpoint}
+            onStartPractice={handleStartPractice}
+            onBack={() => setSelectedLessonId(null)}
+          />
+        ) : (
+          <LessonPath
+            curriculum={curriculum}
+            completedLessons={completedLessons}
+            onSelectLesson={setSelectedLessonId}
+            onReset={syncResetLessonProgress}
+          />
+        )}
       </Layout>
     );
   }
@@ -292,37 +495,41 @@ export default function App() {
     <Layout
       view={view}
       onViewChange={setView}
+      instrument={instrument}
+      onInstrumentChange={setInstrument}
       tuningKey={tuningKey}
       onTuningChange={setTuning}
       tuningAutoDetected={tuningAutoDetected}
       theme={theme}
       onToggleTheme={toggleTheme}
+      lessonsAvailable={!!curriculum}
     >
-      {/* Top bar: audio controls + note display -- fixed height */}
-      <div className="flex items-center justify-between gap-4 mb-6 h-[88px]">
-        <AudioStatus
-          isListening={mic.isActive}
-          error={mic.error}
-          audioLevel={audioLevel}
-          gain={mic.gain}
-          onStart={() => handleMicToggle()}
-          onStop={() => handleMicToggle()}
-          onGainChange={mic.setGain}
-        />
-        <div className="flex items-center gap-6">
+      {/* Priority 1: pitch feedback — always visible, centered on small screens */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+        <div className="flex items-center justify-center gap-3 sm:gap-5 order-1 sm:order-2">
           <NoteDisplay note={detectedNote} />
+          <LiveStaff note={detectedNote} />
           <CentsMeter cents={detectedNote?.cents ?? null} />
+        </div>
+        <div className="flex items-center justify-center sm:justify-start order-2 sm:order-1">
+          <AudioStatus
+            isListening={mic.isActive}
+            error={mic.error}
+            audioLevel={audioLevel}
+            gain={mic.gain}
+            eq={mic.eq}
+            onStart={() => handleMicToggle()}
+            onStop={() => handleMicToggle()}
+            onGainChange={mic.setGain}
+            onEqChange={mic.setEqBand}
+            getEqFrequencyResponse={mic.getEqFrequencyResponse}
+          />
         </div>
       </div>
 
-      {/* Live FFT spectrum */}
-      <div className="mb-4">
-        <FftVisualizer getAnalyser={mic.getAnalyser} isActive={mic.isActive} />
-      </div>
-
-      {/* Fretboard + Chord display */}
-      <div className="flex gap-4 mb-6">
-        <div className="flex-1 bg-[var(--c-surface-half)] rounded-2xl p-4 border border-[var(--c-border-half)] min-w-0">
+      {/* Priority 2: fretboard — primary practice surface */}
+      <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 mb-3 sm:mb-4 lg:mb-6">
+        <div className="flex-1 bg-[var(--c-surface-half)] rounded-xl sm:rounded-2xl p-2 sm:p-4 border border-[var(--c-border-half)] min-w-0 order-1">
           <div className="flex items-center justify-between h-[20px] mb-1 px-1">
             <div>
               {showScale && !exercise ? (
@@ -342,7 +549,11 @@ export default function App() {
             <button
               onClick={() => setFretboardInverted(!fretboardInverted)}
               className="text-xs text-[var(--c-text-muted)] hover:text-[var(--c-text)] transition flex items-center gap-1"
-              title={fretboardInverted ? 'G string on top' : 'A string on top'}
+              title={
+                fretboardInverted
+                  ? `${tuning.strings[0]?.note} string on top`
+                  : `${tuning.strings[tuning.strings.length - 1]?.note} string on top`
+              }
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3" />
@@ -358,17 +569,30 @@ export default function App() {
             inverted={fretboardInverted}
             detectedNote={exercise ? null : detectedNote}
             targetPosition={targetPosition}
-          playedPositionIds={playedIds}
-          chordPositionIds={chordPositionIds}
-        />
+            playedPositionIds={playedIds}
+            chordPositionIds={chordPositionIds}
+            onNoteClick={synth.playNote}
+          />
         </div>
-        <div className="shrink-0 hidden lg:block">
-          <ChordDisplay chord={detectedChord} />
-        </div>
+        {instrument === 'ukulele' && (
+          <>
+            <div className="shrink-0 hidden lg:block order-2">
+              <ChordDisplay chord={detectedChord} />
+            </div>
+            <div className="lg:hidden order-2">
+              <ChordDisplay chord={detectedChord} compact />
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Below-fretboard content area -- min height to prevent jumping */}
-      <div className="min-h-[200px]">
+      {/* Priority 3: FFT spectrum — secondary diagnostic, compact on mobile */}
+      <div className="mb-3 sm:mb-4">
+        <FftVisualizer getAnalyser={mic.getAnalyser} isActive={mic.isActive} />
+      </div>
+
+      {/* Priority 4: exercise / free-play controls */}
+      <div className="min-h-[120px] sm:min-h-[200px]">
         {/* Exercise feedback (completed) */}
         {exercise?.isComplete && (
           <FeedbackPanel
@@ -377,6 +601,8 @@ export default function App() {
             onNextExercise={handleNextExercise}
             onBackToExercises={handleStopExercise}
             sessionResult={sessionResult}
+            checkpoint={checkpointGate}
+            lessonContext={!!exercise.lessonId}
           />
         )}
 
@@ -414,6 +640,19 @@ export default function App() {
               onScaleChange={setSelectedScale}
               onToggleScale={setShowScale}
             />
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--c-text-muted)] uppercase tracking-wider mb-3">
+                Record Song
+              </h2>
+              <SongRecorder
+                detectedNote={detectedNote}
+                isListening={mic.isActive}
+                onEnsureListening={handleMicToggle}
+                getStream={mic.getStream}
+                tuningKey={tuningKey}
+                instrument={instrument}
+              />
+            </div>
             {/* Standalone metronome in free play */}
             <div>
               <h2 className="text-sm font-semibold text-[var(--c-text-muted)] uppercase tracking-wider mb-3">

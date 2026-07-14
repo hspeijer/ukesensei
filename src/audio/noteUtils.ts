@@ -2,14 +2,22 @@ import { type NoteName, frequencyToNote } from '../theory/notes';
 import {
   generateFretboard,
   findNotePositions,
-  TUNINGS,
+  TUNINGS_BY_INSTRUMENT,
+  DEFAULT_TUNING_KEY,
   type FretPosition,
-  type UkuleleTuning,
+  type Instrument,
 } from '../theory/fretboard';
 
-const fretboards = {
-  standard: generateFretboard(TUNINGS.standard),
-  low_g: generateFretboard(TUNINGS.low_g),
+const fretboards: Record<Instrument, Record<string, FretPosition[]>> = {
+  ukulele: Object.fromEntries(
+    Object.entries(TUNINGS_BY_INSTRUMENT.ukulele).map(([key, t]) => [key, generateFretboard(t)]),
+  ),
+  bass: Object.fromEntries(
+    Object.entries(TUNINGS_BY_INSTRUMENT.bass).map(([key, t]) => [key, generateFretboard(t)]),
+  ),
+  guitar: Object.fromEntries(
+    Object.entries(TUNINGS_BY_INSTRUMENT.guitar).map(([key, t]) => [key, generateFretboard(t)]),
+  ),
 };
 
 export interface NoteInfo {
@@ -20,20 +28,38 @@ export interface NoteInfo {
   positions: FretPosition[];
 }
 
-// G3 is ~196 Hz, so the floor must be below that for low G support
-const MIN_FREQUENCY = 175;
-const MAX_FREQUENCY = 1200;
+/**
+ * Per-instrument pitch-detection tuning: the audible frequency range to accept,
+ * and the analysis buffer size (larger buffers resolve low bass notes more
+ * reliably, at the cost of a little extra latency).
+ */
+export const AUDIO_CONFIG_BY_INSTRUMENT: Record<
+  Instrument,
+  { minFrequency: number; maxFrequency: number; analysisSize: number }
+> = {
+  // G3 is ~196 Hz, so the floor must be below that for low G support
+  ukulele: { minFrequency: 175, maxFrequency: 1200, analysisSize: 2048 },
+  // Open E1 is ~41 Hz; give it headroom, and a bigger analysis window for accuracy.
+  bass: { minFrequency: 33, maxFrequency: 450, analysisSize: 4096 },
+  // Open E2 is ~82 Hz -- closer to bass than ukulele, so use the same larger
+  // analysis window for reliable low-string resolution.
+  guitar: { minFrequency: 70, maxFrequency: 1400, analysisSize: 4096 },
+};
+
 const MIN_CLARITY = 0.85;
 
 export function analyzeFrequency(
   frequency: number,
   clarity: number,
-  tuningKey: 'standard' | 'low_g' = 'low_g',
+  instrument: Instrument = 'ukulele',
+  tuningKey?: string,
 ): NoteInfo | null {
-  if (clarity < MIN_CLARITY || frequency < MIN_FREQUENCY || frequency > MAX_FREQUENCY) return null;
+  const { minFrequency, maxFrequency } = AUDIO_CONFIG_BY_INSTRUMENT[instrument];
+  if (clarity < MIN_CLARITY || frequency < minFrequency || frequency > maxFrequency) return null;
 
   const { note, octave, cents } = frequencyToNote(frequency);
-  const fretboard = fretboards[tuningKey];
+  const key = tuningKey ?? DEFAULT_TUNING_KEY[instrument];
+  const fretboard = fretboards[instrument][key] ?? fretboards[instrument][DEFAULT_TUNING_KEY[instrument]];
   const positions = findNotePositions(fretboard, note, octave);
 
   return { note, octave, cents, frequency, positions };

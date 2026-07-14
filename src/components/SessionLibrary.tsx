@@ -79,7 +79,7 @@ export function SessionLibrary({ onSelectSession }: SessionLibraryProps) {
         {sessions.length === 0 ? (
           <div className="text-center py-8 text-[var(--c-text-muted)] bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)]">
             <p className="text-lg mb-1">No sessions yet</p>
-            <p className="text-sm">Complete an exercise with the metronome enabled to record a session.</p>
+            <p className="text-sm">Complete an exercise or record a song in Free Play.</p>
           </div>
         ) : (
           <div className="grid gap-2">
@@ -229,7 +229,7 @@ function SessionCard({
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-[var(--c-text-strong)] truncate">
-          {session.root} {scaleDef?.name ?? session.scaleKey}
+          {session.scaleKey === 'melody' ? 'Song recording' : `${session.root} ${scaleDef?.name ?? session.scaleKey}`}
         </div>
         <div className="text-xs text-[var(--c-text-muted)]">
           {dateStr} {timeStr} &middot; {session.bpm} BPM &middot; {Math.round(session.durationSec)}s

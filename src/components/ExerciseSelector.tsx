@@ -56,7 +56,7 @@ export function ExerciseSelector({
         <label className="text-xs text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-2 block">
           Scale / Mode
         </label>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           {SCALE_KEYS.map((key) => {
             const def = SCALE_DEFINITIONS[key];
             return (

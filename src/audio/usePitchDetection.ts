@@ -6,7 +6,7 @@ import { analyzeFrequency, detectTuningFromNote } from './noteUtils';
 const BUFFER_SIZE = 2048;
 const LEVEL_SMOOTHING = 0.3;
 
-function computeRMS(buffer: Float32Array): number {
+function computeRMS(buffer: Float32Array<ArrayBuffer>): number {
   let sum = 0;
   for (let i = 0; i < buffer.length; i++) {
     sum += buffer[i] * buffer[i];
@@ -19,8 +19,8 @@ export function usePitchDetection(
   getSampleRate: () => number,
   isActive: boolean,
 ) {
-  const detectorRef = useRef<PitchDetector<Float32Array> | null>(null);
-  const bufferRef = useRef<Float32Array | null>(null);
+  const detectorRef = useRef<PitchDetector<Float32Array<ArrayBuffer>> | null>(null);
+  const bufferRef = useRef<Float32Array<ArrayBuffer> | null>(null);
   const rafRef = useRef<number | null>(null);
   const smoothedLevelRef = useRef(0);
   const setDetectedNote = useAppStore((s) => s.setDetectedNote);
@@ -29,6 +29,8 @@ export function usePitchDetection(
   const setTuning = useAppStore((s) => s.setTuning);
   const setTuningAutoDetected = useAppStore((s) => s.setTuningAutoDetected);
   const tuningAutoRef = useRef({ lowGCount: 0, highGCount: 0 });
+
+  const instrument = useAppStore((s) => s.instrument);
 
   const detect = useCallback(() => {
     const analyser = getAnalyser();
@@ -57,7 +59,7 @@ export function usePitchDetection(
       getSampleRate(),
     );
 
-    const noteInfo = analyzeFrequency(frequency, clarity, tuningKey);
+    const noteInfo = analyzeFrequency(frequency, clarity, instrument, tuningKey);
     if (noteInfo) {
       setDetectedNote({
         note: noteInfo.note,
@@ -68,7 +70,9 @@ export function usePitchDetection(
         timestamp: Date.now(),
       });
 
-      const detected = detectTuningFromNote(noteInfo.note, noteInfo.octave, noteInfo.frequency);
+      const detected = instrument === 'ukulele'
+        ? detectTuningFromNote(noteInfo.note, noteInfo.octave, noteInfo.frequency)
+        : null;
       if (detected) {
         const counts = tuningAutoRef.current;
         if (detected === 'low_g') counts.lowGCount++;
@@ -92,7 +96,7 @@ export function usePitchDetection(
     }
 
     rafRef.current = requestAnimationFrame(detect);
-  }, [getAnalyser, getSampleRate, setDetectedNote, setAudioLevel, tuningKey, setTuning, setTuningAutoDetected]);
+  }, [getAnalyser, getSampleRate, setDetectedNote, setAudioLevel, tuningKey, setTuning, setTuningAutoDetected, instrument]);
 
   useEffect(() => {
     if (isActive) {

@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import type { NoteName } from '../theory/notes';
-import type { FretPosition, UkuleleTuning } from '../theory/fretboard';
-import { TUNINGS } from '../theory/fretboard';
+import type { FretPosition, Instrument, InstrumentTuning } from '../theory/fretboard';
+import { DEFAULT_TUNING_KEY, TUNINGS_BY_INSTRUMENT } from '../theory/fretboard';
+import { pathToState } from '../routing/url';
+import { hasCurriculum } from '../lessons/registry';
 
-export type AppView = 'freeplay' | 'exercises' | 'library' | 'playback';
-export type TuningKey = 'standard' | 'low_g';
+export type AppView = 'freeplay' | 'exercises' | 'lessons' | 'library' | 'playback';
+export type TuningKey = string;
 export type Theme = 'dark' | 'light';
+export type { Instrument };
 
 export interface DetectedNote {
   note: NoteName;
@@ -32,6 +35,12 @@ export interface ExerciseState {
   isComplete: boolean;
   startedAt: number | null;
   bpm: number | null;
+  /** Optional custom title (used by lesson checkpoints instead of the scale name). */
+  title?: string;
+  /** Set when this exercise is a lesson checkpoint; drives gating on completion. */
+  lessonId?: string;
+  /** Fraction of notes (0-1) required to pass a lesson checkpoint. */
+  requiredAccuracy?: number;
 }
 
 function getInitialTheme(): Theme {
@@ -39,6 +48,15 @@ function getInitialTheme(): Theme {
   const stored = localStorage.getItem('uke-sensei-theme');
   if (stored === 'light' || stored === 'dark') return stored;
   return 'dark';
+}
+
+const INSTRUMENT_KEY = 'uke-sensei-instrument';
+
+function getInitialInstrument(): Instrument {
+  if (typeof window === 'undefined') return 'ukulele';
+  const stored = localStorage.getItem(INSTRUMENT_KEY);
+  if (stored === 'ukulele' || stored === 'bass' || stored === 'guitar') return stored;
+  return 'ukulele';
 }
 
 function applyThemeClass(theme: Theme) {
@@ -59,9 +77,13 @@ interface AppState {
   theme: Theme;
   toggleTheme: () => void;
 
+  // Instrument
+  instrument: Instrument;
+  setInstrument: (instrument: Instrument) => void;
+
   // Tuning
   tuningKey: TuningKey;
-  tuning: UkuleleTuning;
+  tuning: InstrumentTuning;
   setTuning: (key: TuningKey) => void;
   tuningAutoDetected: boolean;
   setTuningAutoDetected: (v: boolean) => void;
@@ -97,13 +119,55 @@ interface AppState {
   // Session playback
   selectedSessionId: string | null;
   setSelectedSessionId: (id: string | null) => void;
+
+  // Lesson navigation
+  selectedLessonId: string | null;
+  setSelectedLessonId: (id: string | null) => void;
+
+  // Lesson progress
+  completedLessons: string[];
+  completeLesson: (id: string) => void;
+  resetLessonProgress: () => void;
+}
+
+const LESSON_PROGRESS_KEY = 'uke-sensei-lessons';
+
+function getInitialLessonProgress(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(LESSON_PROGRESS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === 'string');
+    }
+  } catch {
+    /* ignore malformed storage */
+  }
+  return [];
+}
+
+function persistLessonProgress(ids: string[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LESSON_PROGRESS_KEY, JSON.stringify(ids));
+  } catch {
+    /* storage may be unavailable */
+  }
 }
 
 const initialTheme = getInitialTheme();
 applyThemeClass(initialTheme);
 
+const initialInstrument = getInitialInstrument();
+const initialTuningKey = DEFAULT_TUNING_KEY[initialInstrument];
+
+const initialRoute =
+  typeof window !== 'undefined'
+    ? pathToState(window.location.pathname)
+    : { view: 'freeplay' as AppView, lessonId: null, sessionId: null };
+
 export const useAppStore = create<AppState>((set) => ({
-  view: 'freeplay',
+  view: initialRoute.view,
   setView: (view) => set({ view }),
 
   theme: initialTheme,
@@ -115,9 +179,31 @@ export const useAppStore = create<AppState>((set) => ({
       return { theme: next };
     }),
 
-  tuningKey: 'low_g',
-  tuning: TUNINGS.low_g,
-  setTuning: (key) => set({ tuningKey: key, tuning: TUNINGS[key] }),
+  instrument: initialInstrument,
+  setInstrument: (instrument) =>
+    set((state) => {
+      if (state.instrument === instrument) return state;
+      localStorage.setItem(INSTRUMENT_KEY, instrument);
+      const tuningKey = DEFAULT_TUNING_KEY[instrument];
+      return {
+        instrument,
+        tuningKey,
+        tuning: TUNINGS_BY_INSTRUMENT[instrument][tuningKey],
+        tuningAutoDetected: false,
+        // Fret positions from the previous instrument's board don't apply anymore.
+        exercise: null,
+        // Only some instruments have a lesson curriculum.
+        view: !hasCurriculum(instrument) && state.view === 'lessons' ? 'freeplay' : state.view,
+      };
+    }),
+
+  tuningKey: initialTuningKey,
+  tuning: TUNINGS_BY_INSTRUMENT[initialInstrument][initialTuningKey],
+  setTuning: (key) =>
+    set((state) => ({
+      tuningKey: key,
+      tuning: TUNINGS_BY_INSTRUMENT[state.instrument][key],
+    })),
   tuningAutoDetected: false,
   setTuningAutoDetected: (tuningAutoDetected) => set({ tuningAutoDetected }),
 
@@ -180,6 +266,23 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   clearExercise: () => set({ exercise: null, view: 'exercises' }),
 
-  selectedSessionId: null,
+  selectedSessionId: initialRoute.sessionId,
   setSelectedSessionId: (selectedSessionId) => set({ selectedSessionId }),
+
+  selectedLessonId: initialRoute.lessonId,
+  setSelectedLessonId: (selectedLessonId) => set({ selectedLessonId }),
+
+  completedLessons: getInitialLessonProgress(),
+  completeLesson: (id) =>
+    set((state) => {
+      if (state.completedLessons.includes(id)) return state;
+      const next = [...state.completedLessons, id];
+      persistLessonProgress(next);
+      return { completedLessons: next };
+    }),
+  resetLessonProgress: () =>
+    set(() => {
+      persistLessonProgress([]);
+      return { completedLessons: [] };
+    }),
 }));

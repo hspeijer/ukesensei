@@ -4,7 +4,7 @@ import {
   generateFretboard,
   getScalePositions,
   type FretPosition,
-  type UkuleleTuning,
+  type InstrumentTuning,
 } from '../theory/fretboard';
 import type { ExerciseDirection, ScaleExerciseConfig } from './types';
 
@@ -61,7 +61,7 @@ function buildScalePath(
 export function createScaleExercise(
   root: NoteName,
   scaleKey: string,
-  tuning: UkuleleTuning,
+  tuning: InstrumentTuning,
   direction: ExerciseDirection = 'ascending',
 ): ScaleExerciseConfig {
   const fretboard = generateFretboard(tuning);

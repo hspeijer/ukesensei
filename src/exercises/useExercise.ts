@@ -3,6 +3,17 @@ import { useAppStore } from '../store/useAppStore';
 import { createScaleExercise } from './scaleExercises';
 import type { ExerciseDirection } from './types';
 import type { NoteName } from '../theory/notes';
+import type { FretPosition } from '../theory/fretboard';
+
+export interface CustomExerciseOptions {
+  positions: FretPosition[];
+  root: NoteName;
+  scaleKey: string;
+  title: string;
+  lessonId?: string;
+  requiredAccuracy?: number;
+  bpm?: number | null;
+}
 
 const NOTE_HOLD_MS = 50;
 
@@ -26,7 +37,7 @@ export function useExercise(opts: UseExerciseOptions = {}) {
 
   const begin = useCallback(
     (root: NoteName, scaleKey: string, direction: ExerciseDirection = 'ascending', bpm: number | null = null, loops: number = 1) => {
-      const config = createScaleExercise(root, scaleKey, tuning, 'both');
+      const config = createScaleExercise(root, scaleKey, tuning, direction);
       // Repeat the scale path for the requested number of loops
       let positions = config.positions;
       if (loops > 1) {
@@ -56,8 +67,33 @@ export function useExercise(opts: UseExerciseOptions = {}) {
     [startExercise, setView, tuning],
   );
 
-  // How far ahead to look for a matching note when the player skips
-  const LOOK_AHEAD = 8;
+  const beginCustom = useCallback(
+    (opts: CustomExerciseOptions) => {
+      startExercise({
+        scaleKey: opts.scaleKey,
+        root: opts.root,
+        currentNoteIndex: 0,
+        targetPositions: opts.positions,
+        notesPlayed: [],
+        isComplete: false,
+        startedAt: Date.now(),
+        bpm: opts.bpm ?? null,
+        title: opts.title,
+        lessonId: opts.lessonId,
+        requiredAccuracy: opts.requiredAccuracy,
+      });
+      setView('freeplay');
+    },
+    [startExercise, setView],
+  );
+
+  // How far ahead to look for a matching note when the player genuinely skips.
+  // Kept small so a stray/ringing note can't jump to a much later position
+  // (e.g. a scale that ends on the same note it started on).
+  const LOOK_AHEAD = 3;
+  // A skip must be held a bit longer than a normal advance to be accepted,
+  // so brief overtones or a decaying previous note don't trigger one.
+  const SKIP_HOLD_MS = 130;
 
   useEffect(() => {
     if (!exercise || exercise.isComplete || !detectedNote) {
@@ -87,9 +123,20 @@ export function useExercise(opts: UseExerciseOptions = {}) {
         holdStartRef.current = Date.now();
       }
     } else {
-      // Look ahead: if the played note matches an upcoming position, skip to it
+      // The note we just played is probably still ringing out. Ignore it so it
+      // can't be mistaken for a wrong note or used to trigger a skip ahead.
+      const prevTarget = exercise.targetPositions[exercise.currentNoteIndex - 1];
+      if (prevTarget && detectedNote.note === prevTarget.note) {
+        return;
+      }
+
+      // Look ahead a little: if the player jumped forward to an upcoming note,
+      // skip to it. The window is intentionally short.
       let foundAhead = -1;
-      const limit = Math.min(exercise.currentNoteIndex + LOOK_AHEAD, exercise.targetPositions.length);
+      const limit = Math.min(
+        exercise.currentNoteIndex + 1 + LOOK_AHEAD,
+        exercise.targetPositions.length,
+      );
       for (let i = exercise.currentNoteIndex + 1; i < limit; i++) {
         if (exercise.targetPositions[i].note === detectedNote.note) {
           foundAhead = i;
@@ -98,7 +145,7 @@ export function useExercise(opts: UseExerciseOptions = {}) {
       }
 
       if (foundAhead >= 0 && lastNoteRef.current === noteKey) {
-        if (holdStartRef.current && Date.now() - holdStartRef.current >= NOTE_HOLD_MS) {
+        if (holdStartRef.current && Date.now() - holdStartRef.current >= SKIP_HOLD_MS) {
           const skipped = foundAhead - exercise.currentNoteIndex;
           skipToIndex(foundAhead, skipped);
           const beatOffset = getNearestBeatOffsetRef.current
@@ -115,5 +162,5 @@ export function useExercise(opts: UseExerciseOptions = {}) {
     }
   }, [exercise, detectedNote, advanceExercise, skipToIndex]);
 
-  return { exercise, begin };
+  return { exercise, begin, beginCustom };
 }

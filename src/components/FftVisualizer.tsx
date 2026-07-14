@@ -3,7 +3,6 @@ import { useRef, useEffect, useCallback } from 'react';
 interface FftVisualizerProps {
   getAnalyser: () => AnalyserNode | null;
   isActive: boolean;
-  height?: number;
 }
 
 const NOTE_FREQUENCIES: { note: string; freq: number }[] = [
@@ -20,10 +19,10 @@ const NOTE_FREQUENCIES: { note: string; freq: number }[] = [
   { note: 'C6', freq: 1046.5 },
 ];
 
-export function FftVisualizer({ getAnalyser, isActive, height = 140 }: FftVisualizerProps) {
+export function FftVisualizer({ getAnalyser, isActive }: FftVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
-  const dataRef = useRef<Uint8Array | null>(null);
+  const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -160,14 +159,13 @@ export function FftVisualizer({ getAnalyser, isActive, height = 140 }: FftVisual
     <div
       className="bg-[var(--c-surface-half)] rounded-xl border border-[var(--c-border-half)] overflow-hidden"
     >
-      <div className="flex items-center justify-between px-3 py-1.5">
-        <span className="text-xs text-[var(--c-text-muted)] font-medium">FFT Spectrum</span>
-        <span className="text-xs text-[var(--c-text-muted)]">60 Hz — 1.2 kHz (log scale)</span>
+      <div className="flex items-center justify-between px-2 sm:px-3 py-1 sm:py-1.5">
+        <span className="text-[10px] sm:text-xs text-[var(--c-text-muted)] font-medium">FFT Spectrum</span>
+        <span className="text-[10px] sm:text-xs text-[var(--c-text-muted)] hidden sm:inline">60 Hz — 1.2 kHz (log scale)</span>
       </div>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height }}
-        className="block"
+        className="block w-full h-[64px] sm:h-[100px] lg:h-[140px]"
       />
     </div>
   );

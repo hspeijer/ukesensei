@@ -6,8 +6,10 @@ import { detectChord, findVoicing, type ChordVoicing } from '../theory/chords';
 const CHORD_WINDOW_MS = 800;
 const CHORD_MIN_UNIQUE_NOTES = 3;
 const CHORD_UPDATE_INTERVAL_MS = 150;
-// If one note makes up this fraction or more of detections, it's a single string
 const DOMINANT_NOTE_THRESHOLD = 0.75;
+// A note must appear at least this often to be considered real (filters harmonics / noise)
+const MIN_NOTE_FRACTION = 0.12;
+const MIN_NOTE_COUNT = 2;
 
 export interface DetectedChord {
   root: NoteName;
@@ -55,7 +57,17 @@ export function useChordDetection(detectedNote: DetectedNote | null): DetectedCh
     const maxCount = Math.max(...noteCounts.values());
     if (maxCount / totalDetections >= DOMINANT_NOTE_THRESHOLD) return;
 
-    const detected = detectChord(uniqueNotes, noteCounts);
+    // Filter out notes that appeared too rarely — they are likely harmonics,
+    // pitch-detection glitches, or bleed from a previous chord
+    const filteredNotes: NoteName[] = [];
+    for (const [note, count] of noteCounts.entries()) {
+      if (count >= MIN_NOTE_COUNT && count / totalDetections >= MIN_NOTE_FRACTION) {
+        filteredNotes.push(note);
+      }
+    }
+    if (filteredNotes.length < CHORD_MIN_UNIQUE_NOTES) return;
+
+    const detected = detectChord(filteredNotes, noteCounts);
     if (detected) {
       const qualitySuffix = getQualitySuffix(detected.quality);
       const voicing = findVoicing(detected.root, qualitySuffix);

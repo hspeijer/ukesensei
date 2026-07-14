@@ -14,9 +14,9 @@ export function CentsMeter({ cents }: CentsMeterProps) {
   const hasValue = cents !== null;
 
   return (
-    <div className="flex flex-col items-center gap-1 w-[180px]">
-      <div className="text-xs text-[var(--c-text-muted)] font-medium">TUNING</div>
-      <svg viewBox="0 0 120 32" className="w-[180px] h-8">
+    <div className="flex flex-col items-center gap-0.5 sm:gap-1 w-[120px] sm:w-[160px] lg:w-[180px] shrink-0">
+      <div className="text-[10px] sm:text-xs text-[var(--c-text-muted)] font-medium">TUNING</div>
+      <svg viewBox="0 0 120 32" className="w-full h-6 sm:h-8">
         {/* Track */}
         <rect x={10} y={13} width={100} height={6} rx={3} fill="var(--c-surface)" />
 

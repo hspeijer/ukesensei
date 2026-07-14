@@ -7,10 +7,11 @@ interface StringWaveformProps {
   currentTime: number;
   width: number;
   height: number;
+  stringNames?: string[];
 }
 
 const STRING_COLORS = ['#34d399', '#38bdf8', '#fbbf24', '#f472b6'];
-const STRING_NAMES = ['G', 'C', 'E', 'A'];
+const DEFAULT_STRING_NAMES = ['G', 'C', 'E', 'A'];
 const LANE_PADDING = 4;
 
 export function StringWaveform({
@@ -19,6 +20,7 @@ export function StringWaveform({
   currentTime,
   width,
   height,
+  stringNames = DEFAULT_STRING_NAMES,
 }: StringWaveformProps) {
   const laneHeight = (height - LANE_PADDING * 3) / 4;
 
@@ -28,7 +30,7 @@ export function StringWaveform({
     const step = Math.max(1, Math.floor(frames.length / width));
     const pxPerFrame = width / frames.length;
 
-    return STRING_NAMES.map((_, si) => {
+    return stringNames.map((_, si) => {
       let d = '';
       for (let i = 0; i < frames.length; i += step) {
         const x = i * pxPerFrame;
@@ -43,14 +45,14 @@ export function StringWaveform({
       d += ` L ${lastX} ${laneBottom} L 0 ${laneBottom} Z`;
       return d;
     });
-  }, [frames, width, laneHeight]);
+  }, [frames, width, laneHeight, stringNames]);
 
   const cursorX = durationSec > 0 ? (currentTime / durationSec) * width : 0;
 
   return (
     <svg width={width} height={height} className="block">
       {/* Lane backgrounds */}
-      {STRING_NAMES.map((name, si) => {
+      {stringNames.map((name, si) => {
         const y = si * (laneHeight + LANE_PADDING);
         return (
           <g key={si}>

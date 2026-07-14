@@ -1,5 +1,4 @@
-import { type NoteName, noteToSemitone, semitoneToNote, CHROMATIC_NOTES } from './notes';
-import { type UkuleleTuning, TUNINGS } from './fretboard';
+import { type NoteName, ENHARMONIC_MAP } from './notes';
 
 export interface ChordVoicing {
   name: string;
@@ -122,9 +121,8 @@ function getVoicingMatches(): VoicingMatch[] {
 }
 
 /**
- * Detect chord using a hybrid approach:
- * 1. First try matching against known voicings (most accurate for ukulele)
- * 2. Fall back to interval-based detection against all 12 roots
+ * Match detected pitch classes against the known ukulele voicing database.
+ * Returns the best-matching chord or null if nothing fits.
  */
 export function detectChord(
   notes: NoteName[],
@@ -135,18 +133,16 @@ export function detectChord(
   const uniqueNotes = [...new Set(notes)];
   const detectedSet = new Set(uniqueNotes);
 
-  // --- Strategy 1: Match against known voicings ---
   const voicings = getVoicingMatches();
-  let bestVoicing: { root: NoteName; suffix: string; score: number } | null = null;
+  let best: { root: string; suffix: string; score: number } | null = null;
 
   for (const vm of voicings) {
     const voicingUniqueNotes = new Set(vm.notes);
-    // How many of our detected notes appear in this voicing?
+
     let detectedInVoicing = 0;
     for (const n of uniqueNotes) {
       if (voicingUniqueNotes.has(n)) detectedInVoicing++;
     }
-    // How many voicing notes did we detect?
     let voicingCovered = 0;
     for (const n of voicingUniqueNotes) {
       if (detectedSet.has(n)) voicingCovered++;
@@ -154,81 +150,40 @@ export function detectChord(
 
     if (detectedInVoicing < 2) continue;
 
-    // Score: percentage of detected notes that are in the voicing,
-    // plus bonus for covering more of the voicing's notes
     const fitScore = detectedInVoicing / uniqueNotes.length;
     const coverScore = voicingCovered / voicingUniqueNotes.size;
-    // Boost if note frequency data shows the root is common
+
+    const exactBonus = (fitScore === 1.0 && coverScore === 1.0) ? 0.25 : 0;
+
+    // Normalize flat root names (Bb→A#, …) so lookup works against
+    // detected notes which always use sharps
     let rootBoost = 0;
     if (noteCounts) {
-      const rootCount = noteCounts.get(vm.root as NoteName) ?? 0;
+      const canonicalRoot = (ENHARMONIC_MAP[vm.root] ?? vm.root) as NoteName;
+      const rootCount = noteCounts.get(canonicalRoot) ?? 0;
       const totalCount = Array.from(noteCounts.values()).reduce((a, b) => a + b, 0);
-      if (totalCount > 0) rootBoost = (rootCount / totalCount) * 0.1;
+      if (totalCount > 0) rootBoost = (rootCount / totalCount) * 0.2;
     }
-    const score = fitScore * 0.6 + coverScore * 0.4 + rootBoost;
 
-    if (!bestVoicing || score > bestVoicing.score) {
-      bestVoicing = { root: vm.root, suffix: vm.suffix, score };
-    }
-  }
+    const qualityKey = suffixToQuality(vm.suffix);
+    const qualityDef = CHORD_QUALITIES[qualityKey];
+    const priorityBonus = qualityDef ? (qualityDef.priority / 10) * 0.08 : 0;
 
-  // --- Strategy 2: Interval-based matching against all 12 roots ---
-  const semitones = uniqueNotes.map(noteToSemitone);
-  let bestInterval: { root: NoteName; quality: string; display: string; score: number } | null = null;
+    const score = fitScore * 0.5 + coverScore * 0.35 + exactBonus + rootBoost + priorityBonus;
 
-  for (const rootNote of CHROMATIC_NOTES) {
-    const rootSemitone = noteToSemitone(rootNote);
-    const intervals = semitones
-      .map((s) => ((s - rootSemitone) % 12 + 12) % 12)
-      .sort((a, b) => a - b);
-    const intervalSet = new Set(intervals);
-
-    for (const [quality, def] of Object.entries(CHORD_QUALITIES)) {
-      let matched = 0;
-      for (const interval of def.intervals) {
-        if (intervalSet.has(interval % 12)) matched++;
-      }
-
-      if (matched < 2) continue;
-      // Root must be present OR heavily implied
-      const hasRoot = intervalSet.has(0);
-      if (!hasRoot && matched < 3) continue;
-
-      const templateSet = new Set(def.intervals.map((i) => i % 12));
-      const extras = intervals.filter((i) => !templateSet.has(i)).length;
-
-      const matchRatio = matched / def.intervals.length;
-      const extraPenalty = extras * 0.15;
-      const priorityBonus = (def.priority / 10) * 0.1;
-      const rootBonus = hasRoot ? 0.15 : 0;
-
-      const score = matchRatio - extraPenalty + priorityBonus + rootBonus;
-
-      if (score > 0.3 && (!bestInterval || score > bestInterval.score)) {
-        bestInterval = {
-          root: rootNote,
-          quality,
-          display: `${rootNote}${def.suffix}`,
-          score,
-        };
-      }
+    if (!best || score > best.score) {
+      best = { root: vm.root, suffix: vm.suffix, score };
     }
   }
 
-  // Pick the winner: voicing match gets a bonus since it's uke-specific
-  if (bestVoicing && bestInterval) {
-    const voicingQuality = suffixToQuality(bestVoicing.suffix);
-    const voicingDisplay = `${bestVoicing.root}${bestVoicing.suffix}`;
-    if (bestVoicing.score * 1.15 >= bestInterval.score) {
-      return { root: bestVoicing.root, quality: voicingQuality, display: voicingDisplay };
-    }
-    return bestInterval;
-  }
-  if (bestVoicing) {
-    const q = suffixToQuality(bestVoicing.suffix);
-    return { root: bestVoicing.root, quality: q, display: `${bestVoicing.root}${bestVoicing.suffix}` };
-  }
-  return bestInterval;
+  if (!best) return null;
+
+  const quality = suffixToQuality(best.suffix);
+  return {
+    root: best.root as NoteName,
+    quality,
+    display: `${best.root}${best.suffix}`,
+  };
 }
 
 function suffixToQuality(suffix: string): string {

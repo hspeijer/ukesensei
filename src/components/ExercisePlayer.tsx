@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import type { ExerciseState } from '../store/useAppStore';
 import { displayNote } from '../theory/notes';
 import { SCALE_DEFINITIONS } from '../theory/scales';
@@ -35,20 +34,12 @@ export function ExercisePlayer({ exercise, onStop, countingIn, countInBeat, metr
   const lastNote = exercise.notesPlayed[exercise.notesPlayed.length - 1];
   const lastBeatOffset = lastNote?.beatOffset;
 
-  const playedIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (let i = 0; i < currentIndex; i++) {
-      ids.add(getPositionId(exercise.targetPositions[i]));
-    }
-    return ids;
-  }, [exercise.targetPositions, currentIndex]);
-
   return (
     <div className="bg-[var(--c-surface)] rounded-xl p-4 border border-[var(--c-border)]">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-sm font-semibold text-[var(--c-accent)]">
-            {displayNote(exercise.root)} {scaleDef?.name}
+            {exercise.title ?? `${displayNote(exercise.root)} ${scaleDef?.name ?? ''}`}
           </h3>
           <p className="text-xs text-[var(--c-text-muted)]">
             Note {Math.min(currentIndex + 1, totalNotes)} of {totalNotes}

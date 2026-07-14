@@ -3,11 +3,44 @@ import { ChordDiagram } from './ChordDiagram';
 
 interface ChordDisplayProps {
   chord: DetectedChord | null;
+  compact?: boolean;
 }
 
-export function ChordDisplay({ chord }: ChordDisplayProps) {
+export function ChordDisplay({ chord, compact = false }: ChordDisplayProps) {
+  if (compact) {
+    return (
+      <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3 flex items-center gap-3 text-[var(--c-text)]">
+        {chord?.voicing ? (
+          <ChordDiagram
+            voicing={chord.voicing}
+            label={chord.display}
+            size={72}
+          />
+        ) : (
+          <div className="text-2xl text-[var(--c-border)] shrink-0">&#9835;</div>
+        )}
+        <div className="min-w-0">
+          {chord ? (
+            <>
+              <div className="text-lg font-bold text-[var(--c-accent)] truncate">
+                {chord.display}
+              </div>
+              <div className="text-xs text-[var(--c-text-muted)]">
+                {chord.voicing ? 'Detected chord' : 'No diagram available'}
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-[var(--c-text-muted)]">
+              Strum a chord...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-4 w-[200px] h-[240px] flex flex-col items-center justify-center text-[var(--c-text)]">
+    <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3 sm:p-4 w-full sm:w-[180px] lg:w-[200px] h-auto sm:h-[220px] lg:h-[240px] flex flex-col items-center justify-center text-[var(--c-text)]">
       {chord ? (
         <>
           {chord.voicing ? (

@@ -3,14 +3,15 @@
  * Runs in a separate thread for low-latency real-time analysis.
  */
 
-const ANALYSIS_SIZE = 2048;
+const DEFAULT_ANALYSIS_SIZE = 2048;
 
 class WasmPitchProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     this.wasm = null;
     this.samplePtr = null;
-    this.ringBuffer = new Float32Array(ANALYSIS_SIZE);
+    this.analysisSize = DEFAULT_ANALYSIS_SIZE;
+    this.ringBuffer = new Float32Array(this.analysisSize);
     this.writePos = 0;
     this.sampleRate = sampleRate; // global in worklet scope
     this.frameCount = 0;
@@ -19,20 +20,24 @@ class WasmPitchProcessor extends AudioWorkletProcessor {
 
     this.port.onmessage = (e) => {
       if (e.data.type === 'wasm-binary') {
-        this._initWasm(e.data.binary);
+        this._initWasm(e.data.binary, e.data.analysisSize);
       } else if (e.data.type === 'set-gain') {
         this.gain = e.data.gain;
       }
     };
   }
 
-  async _initWasm(binary) {
+  async _initWasm(binary, analysisSize) {
     try {
+      this.analysisSize = analysisSize || DEFAULT_ANALYSIS_SIZE;
+      this.ringBuffer = new Float32Array(this.analysisSize);
+      this.writePos = 0;
+
       const module = await WebAssembly.compile(binary);
       const instance = await WebAssembly.instantiate(module);
       this.wasm = instance.exports;
-      this.wasm.init(this.sampleRate, ANALYSIS_SIZE);
-      this.samplePtr = this.wasm.alloc(ANALYSIS_SIZE);
+      this.wasm.init(this.sampleRate, this.analysisSize);
+      this.samplePtr = this.wasm.alloc(this.analysisSize);
       this.port.postMessage({ type: 'ready' });
     } catch (err) {
       this.port.postMessage({ type: 'error', message: String(err) });
@@ -44,10 +49,11 @@ class WasmPitchProcessor extends AudioWorkletProcessor {
     if (!input || !input[0]) return true;
 
     const channelData = input[0];
+    const size = this.analysisSize;
 
     for (let i = 0; i < channelData.length; i++) {
       this.ringBuffer[this.writePos] = channelData[i] * this.gain;
-      this.writePos = (this.writePos + 1) % ANALYSIS_SIZE;
+      this.writePos = (this.writePos + 1) % size;
     }
 
     this.frameCount++;
@@ -59,13 +65,13 @@ class WasmPitchProcessor extends AudioWorkletProcessor {
     const mem = new Float32Array(
       this.wasm.memory.buffer,
       this.samplePtr,
-      ANALYSIS_SIZE,
+      size,
     );
 
     // Unroll ring buffer into contiguous memory
     const readStart = this.writePos;
-    for (let i = 0; i < ANALYSIS_SIZE; i++) {
-      mem[i] = this.ringBuffer[(readStart + i) % ANALYSIS_SIZE];
+    for (let i = 0; i < size; i++) {
+      mem[i] = this.ringBuffer[(readStart + i) % size];
     }
 
     const resultPtr = this.wasm.analyze_pitch();
