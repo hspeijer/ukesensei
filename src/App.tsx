@@ -981,7 +981,6 @@ export default function App() {
                 Record Song
               </h2>
               <SongRecorder
-                detectedNote={detectedNote}
                 isListening={mic.isActive}
                 onEnsureListening={handleMicToggle}
                 getStream={mic.getStream}

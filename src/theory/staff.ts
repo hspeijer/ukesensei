@@ -95,79 +95,154 @@ export interface MelodyNote {
   durationMs: number;
 }
 
-/** Infer note duration from inter-onset gaps. */
-export function gapToDurationType(gapMs: number): string {
-  if (gapMs < 180) return '16';
-  if (gapMs < 360) return '8';
-  if (gapMs < 720) return 'q';
-  if (gapMs < 1400) return 'h';
-  return 'w';
+const MIN_BPM = 50;
+const MAX_BPM = 200;
+
+/**
+ * Estimate a tempo from captured note onsets so the melody can be quantized
+ * to a musical grid. Uses the median inter-onset interval (ignoring near-zero
+ * gaps and long pauses between phrases) as a proxy for an eighth note, then
+ * folds the result into a "normal" tempo range by doubling/halving.
+ */
+export function estimateBpm(notes: MelodyNote[]): number {
+  const iois: number[] = [];
+  for (let i = 1; i < notes.length; i++) {
+    const gap = notes[i].startMs - notes[i - 1].startMs;
+    if (gap > 50 && gap < 2000) iois.push(gap);
+  }
+  if (iois.length === 0) return 100;
+
+  iois.sort((a, b) => a - b);
+  const median = iois[Math.floor(iois.length / 2)];
+
+  let bpm = 60000 / (median * 2);
+  while (bpm < MIN_BPM) bpm *= 2;
+  while (bpm > MAX_BPM) bpm /= 2;
+  return Math.round(bpm);
 }
 
-const DURATION_BEATS: Record<string, number> = {
-  w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25,
-};
+// Quantization grid: 16th-note resolution, 4 beats (16 ticks) per 4/4 measure.
+const TICKS_PER_BEAT = 4;
+const TICKS_PER_MEASURE = TICKS_PER_BEAT * 4;
 
-function tokenBeats(token: string): number {
-  const slash = token.lastIndexOf('/');
-  if (slash === -1) return 1;
-  const dur = token.slice(slash + 1).replace(/[.,]/g, '');
-  return DURATION_BEATS[dur] ?? 1;
+// Ordered largest-to-smallest so any 1..16 tick run decomposes into standard
+// (optionally dotted) note values, e.g. 6 ticks -> dotted quarter (not two
+// separately-attacked notes tied together).
+const DURATION_UNITS: Array<{ ticks: number; duration: string; dots: number }> = [
+  { ticks: 16, duration: 'w', dots: 0 },
+  { ticks: 12, duration: 'h', dots: 1 },
+  { ticks: 8, duration: 'h', dots: 0 },
+  { ticks: 6, duration: 'q', dots: 1 },
+  { ticks: 4, duration: 'q', dots: 0 },
+  { ticks: 3, duration: '8', dots: 1 },
+  { ticks: 2, duration: '8', dots: 0 },
+  { ticks: 1, duration: '16', dots: 0 },
+];
+
+function decomposeTicks(ticks: number): Array<{ duration: string; dots: number }> {
+  const pieces: Array<{ duration: string; dots: number }> = [];
+  let remaining = ticks;
+  while (remaining > 0) {
+    const unit = DURATION_UNITS.find((u) => u.ticks <= remaining);
+    if (!unit) break;
+    pieces.push({ duration: unit.duration, dots: unit.dots });
+    remaining -= unit.ticks;
+  }
+  return pieces;
 }
 
-function restToken(beats: number): string {
-  if (beats >= 4) return 'B4/w/r';
-  if (beats >= 2) return 'B4/h/r';
-  if (beats >= 1) return 'B4/q/r';
-  if (beats >= 0.5) return 'B4/8/r';
-  return 'B4/16/r';
+function easyScoreToken(pitch: string | null, duration: string, dots: number): string {
+  const dotStr = '.'.repeat(dots);
+  return pitch === null ? `B4/${duration}/r${dotStr}` : `${pitch}/${duration}${dotStr}`;
 }
 
-/** Build EasyScore note tokens from captured melody segments. */
-export function melodyToEasyScoreTokens(notes: MelodyNote[]): string[] {
-  if (notes.length === 0) return [];
-
-  return notes.map((n, i) => {
-    const gap = i < notes.length - 1
-      ? notes[i + 1].startMs - n.startMs
-      : Math.max(n.durationMs, 500);
-    const dur = gapToDurationType(gap);
-    const pitch = noteToEasyScorePitch(n.note, n.octave);
-    return `${pitch}/${dur}`;
-  });
+export interface QuantizedMelody {
+  bpm: number;
+  /** EasyScore tokens for each 4/4 measure, gaps between notes filled with rests. */
+  measures: string[][];
 }
 
-/** Pad tokens so each 4/4 measure is complete (avoids VexFlow IncompleteVoice). */
-export function padMeasures(tokens: string[]): string[] {
-  if (tokens.length === 0) return tokens;
+// A note's detected sustain can end up a bit short of the next note's onset
+// even for genuinely legato playing (natural note-off timing, detector
+// latency); allow this much slack (in grid ticks) before treating the
+// shortfall as a deliberate rest instead.
+const REST_SLACK_TICKS = 1;
 
-  const padded: string[] = [];
-  let measureBeats = 0;
+/**
+ * Snap captured note onsets/durations onto a 16th-note grid at the estimated
+ * (or given) tempo, producing clean, tempo-aligned rhythmic notation instead
+ * of the raw, often-jittery timing from live pitch detection.
+ */
+export function quantizeMelody(notes: MelodyNote[], bpm: number = estimateBpm(notes)): QuantizedMelody {
+  if (notes.length === 0) return { bpm, measures: [] };
 
-  for (const token of tokens) {
-    const beats = tokenBeats(token);
-    if (measureBeats > 0 && measureBeats + beats > 4) {
-      padded.push(restToken(4 - measureBeats));
-      measureBeats = 0;
+  const gridMs = 60000 / bpm / TICKS_PER_BEAT;
+  const t0 = notes[0].startMs;
+  const onsetTicks = notes.map((n) => Math.round((n.startMs - t0) / gridMs));
+
+  // A note's rhythmic value is normally the (quantized) time until the next
+  // note starts - melodic playing is usually legato, so this reads far more
+  // naturally than the note's own raw sustain, which is often cut short by
+  // pitch-detection dropout or the instrument's decay. But if the detected
+  // sustain falls well short of that gap, the player likely left a real
+  // pause, so only the sustain becomes the note and the rest of the gap
+  // becomes a rest.
+  const events: Array<{ pitch: string | null; ticks: number }> = [];
+  for (let i = 0; i < notes.length; i++) {
+    const pitch = noteToEasyScorePitch(notes[i].note, notes[i].octave);
+    const durationTicks = Math.max(1, Math.round(notes[i].durationMs / gridMs));
+
+    if (i === notes.length - 1) {
+      events.push({ pitch, ticks: Math.min(durationTicks, TICKS_PER_MEASURE) });
+      continue;
     }
-    padded.push(token);
-    measureBeats += beats;
-    if (measureBeats >= 4) measureBeats = 0;
+
+    const gapTicks = onsetTicks[i + 1] - onsetTicks[i];
+    if (gapTicks <= 0) continue; // collapsed onto the next note by rounding
+
+    const legato = durationTicks >= gapTicks - REST_SLACK_TICKS;
+    const noteTicks = Math.min(legato ? gapTicks : durationTicks, gapTicks);
+    events.push({ pitch, ticks: noteTicks });
+    if (gapTicks > noteTicks) events.push({ pitch: null, ticks: gapTicks - noteTicks });
   }
 
-  if (measureBeats > 0) {
-    padded.push(restToken(4 - measureBeats));
-  }
+  const measures: string[][] = [[]];
+  let measurePos = 0;
+  const emit = (pitch: string | null, ticksLeft: number) => {
+    let remaining = ticksLeft;
+    while (remaining > 0) {
+      const chunk = Math.min(remaining, TICKS_PER_MEASURE - measurePos);
+      for (const { duration, dots } of decomposeTicks(chunk)) {
+        measures[measures.length - 1].push(easyScoreToken(pitch, duration, dots));
+      }
+      measurePos += chunk;
+      remaining -= chunk;
+      if (measurePos >= TICKS_PER_MEASURE) {
+        measurePos = 0;
+        measures.push([]);
+      }
+    }
+  };
+  for (const event of events) emit(event.pitch, event.ticks);
+  if (measurePos > 0) emit(null, TICKS_PER_MEASURE - measurePos);
+  if (measures[measures.length - 1].length === 0) measures.pop();
 
-  return padded;
+  return { bpm, measures };
 }
 
-/** Split padded tokens into score lines. */
-export function chunkScoreLines(tokens: string[], notesPerLine = 12): string[] {
-  const padded = padMeasures(tokens);
-  const lines: string[] = [];
-  for (let i = 0; i < padded.length; i += notesPerLine) {
-    lines.push(padded.slice(i, i + notesPerLine).join(', '));
+export interface ScoreLine {
+  /** Comma-separated EasyScore string for this line's measures. */
+  tokens: string;
+  /** Total beats spanned by this line, for the VexFlow voice's time signature. */
+  beats: number;
+}
+
+/** Group quantized measures into score lines a few bars at a time. */
+export function chunkMeasuresIntoLines(measures: string[][], measuresPerLine = 2): ScoreLine[] {
+  const lines: ScoreLine[] = [];
+  for (let i = 0; i < measures.length; i += measuresPerLine) {
+    const group = measures.slice(i, i + measuresPerLine);
+    lines.push({ tokens: group.map((m) => m.join(', ')).join(', '), beats: group.length * 4 });
   }
   return lines;
 }

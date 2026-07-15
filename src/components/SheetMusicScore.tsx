@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { MelodyNote } from '../theory/staff';
-import { chunkScoreLines, melodyToEasyScoreTokens } from '../theory/staff';
+import { chunkMeasuresIntoLines, quantizeMelody } from '../theory/staff';
 
 interface SheetMusicScoreProps {
   notes: MelodyNote[];
@@ -10,13 +10,17 @@ interface SheetMusicScoreProps {
 
 const LINE_HEIGHT = 110;
 const PADDING = 24;
+const MEASURES_PER_LINE = 2;
 
 export function SheetMusicScore({ notes, title, className = '' }: SheetMusicScoreProps) {
   const elementId = useId().replace(/:/g, '');
   const [renderError, setRenderError] = useState<string | null>(null);
+  // Snap the captured melody's timing onto a tempo grid before notating it,
+  // so the rhythm reads cleanly instead of reflecting raw pitch-detection jitter.
+  const { bpm, measures } = useMemo(() => quantizeMelody(notes), [notes]);
   const scoreLines = useMemo(
-    () => chunkScoreLines(melodyToEasyScoreTokens(notes)),
-    [notes],
+    () => chunkMeasuresIntoLines(measures, MEASURES_PER_LINE),
+    [measures],
   );
   const height = useMemo(() => {
     const lines = Math.max(1, scoreLines.length);
@@ -49,13 +53,17 @@ export function SheetMusicScore({ notes, title, className = '' }: SheetMusicScor
             width: width - 20,
           });
 
-          const voiceNotes = score.notes(line, { stem: 'auto' });
+          const voiceNotes = score.notes(line.tokens, { stem: 'auto' });
           // Build the voice manually (rather than via `score.voice`, which
           // adds tickables immediately in strict mode) so SOFT mode is set
           // *before* tickables are added. Otherwise a line with more than a
           // measure's worth of notes throws "Too many ticks" before we get a
-          // chance to relax the mode.
-          const voice = vf.Voice({ time: '4/4' }).setMode(Voice.Mode.SOFT).addTickables(voiceNotes);
+          // chance to relax the mode. The line's own beat count (it may span
+          // several quantized measures) becomes the voice's time signature,
+          // so it's always exactly filled rather than under/overfull.
+          const voice = vf.Voice({ time: { numBeats: line.beats, beatValue: 4 } })
+            .setMode(Voice.Mode.SOFT)
+            .addTickables(voiceNotes);
 
           if (voiceNotes.length > 1) {
             try {
@@ -93,7 +101,9 @@ export function SheetMusicScore({ notes, title, className = '' }: SheetMusicScor
   return (
     <div className={className}>
       {title && (
-        <h3 className="text-sm font-semibold text-[var(--c-text-muted)] mb-2">{title}</h3>
+        <h3 className="text-sm font-semibold text-[var(--c-text-muted)] mb-2">
+          {title} <span className="font-normal text-[var(--c-text-muted)]/70">(~{bpm} BPM, quantized)</span>
+        </h3>
       )}
       {renderError && (
         <p className="text-xs text-red-400 mb-2">{renderError}</p>

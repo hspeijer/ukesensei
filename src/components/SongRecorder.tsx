@@ -1,14 +1,12 @@
-import { useCallback, useState } from 'react';
-import type { DetectedNote, Instrument, TuningKey } from '../store/useAppStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Instrument, TuningKey } from '../store/useAppStore';
 import type { MelodyNote } from '../theory/staff';
-import { useMelodyRecorder } from '../audio/useMelodyRecorder';
 import { useAudioRecorder } from '../audio/useAudioRecorder';
 import { transcribeAudioBlob } from '../audio/transcribeAudio';
 import { SheetMusicScore } from './SheetMusicScore';
 import { uploadSession } from '../api/sessionApi';
 
 interface SongRecorderProps {
-  detectedNote: DetectedNote | null;
   isListening: boolean;
   onEnsureListening: () => Promise<void>;
   getStream: () => MediaStream | null;
@@ -49,7 +47,6 @@ function melodyToSessionNotes(
 }
 
 export function SongRecorder({
-  detectedNote,
   isListening,
   onEnsureListening,
   getStream,
@@ -58,25 +55,35 @@ export function SongRecorder({
 }: SongRecorderProps) {
   const audio = useAudioRecorder();
   const [recording, setRecording] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [finishedNotes, setFinishedNotes] = useState<MelodyNote[] | null>(null);
   const [transcribing, setTranscribing] = useState(false);
-  const [transcriptionSource, setTranscriptionSource] = useState<'live' | 'offline' | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [sessionTimes, setSessionTimes] = useState<{ start: number; end: number } | null>(null);
+  const startedAtRef = useRef<number | null>(null);
 
-  const melody = useMelodyRecorder(detectedNote, recording);
+  // Recording always captures the full take first; pitch/note detection only
+  // ever runs afterward on the finished audio, so a slow or missed live
+  // detection can never cause part of the performance to go unrecorded.
+  useEffect(() => {
+    if (!recording) return;
+    const id = setInterval(() => {
+      if (startedAtRef.current) setElapsedMs(Date.now() - startedAtRef.current);
+    }, 200);
+    return () => clearInterval(id);
+  }, [recording]);
 
   const handleStart = useCallback(async () => {
     setFinishedNotes(null);
-    setTranscriptionSource(null);
     setSaveMessage(null);
     setRecordedBlob(null);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audio.clearRecording();
+    setElapsedMs(0);
 
     if (!isListening) await onEnsureListening();
 
@@ -84,60 +91,48 @@ export function SongRecorder({
     if (!stream) return;
 
     const startedAt = Date.now();
+    startedAtRef.current = startedAt;
     setSessionTimes({ start: startedAt, end: startedAt });
-    melody.start();
     audio.startRecording(stream);
     setRecording(true);
-  }, [audio, audioUrl, getStream, isListening, melody, onEnsureListening]);
+  }, [audio, audioUrl, getStream, isListening, onEnsureListening]);
 
   const handleStop = useCallback(async () => {
     setRecording(false);
-    const liveNotes = melody.stop();
+    startedAtRef.current = null;
     const blob = await audio.stopRecording();
     const endedAt = Date.now();
-    setSessionTimes((prev) => prev ? { ...prev, end: endedAt } : null);
+    setSessionTimes((prev) => (prev ? { ...prev, end: endedAt } : null));
 
-    if (blob.size > 0) {
-      setRecordedBlob(blob);
-      setAudioUrl(URL.createObjectURL(blob));
+    if (blob.size === 0) {
+      setFinishedNotes([]);
+      return;
     }
+
+    setRecordedBlob(blob);
+    setAudioUrl(URL.createObjectURL(blob));
 
     setTranscribing(true);
-    let finalNotes = liveNotes;
-    let source: 'live' | 'offline' = liveNotes.length > 0 ? 'live' : 'offline';
-
-    if (blob.size > 0) {
-      try {
-        const offlineNotes = await transcribeAudioBlob(blob, instrument, tuningKey);
-        if (offlineNotes.length > liveNotes.length) {
-          finalNotes = offlineNotes;
-          source = 'offline';
-        } else if (liveNotes.length === 0 && offlineNotes.length > 0) {
-          finalNotes = offlineNotes;
-          source = 'offline';
-        }
-      } catch {
-        // Keep live notes if offline transcription fails
-      }
+    let notes: MelodyNote[] = [];
+    try {
+      notes = await transcribeAudioBlob(blob, instrument, tuningKey);
+    } catch {
+      // The recording itself is still saved/playable even if detection fails.
     }
-
-    setFinishedNotes(finalNotes);
-    setTranscriptionSource(source);
+    setFinishedNotes(notes);
     setTranscribing(false);
-  }, [audio, instrument, melody, tuningKey]);
+  }, [audio, instrument, tuningKey]);
 
   const handleDiscard = useCallback(() => {
     setRecording(false);
-    melody.reset();
     audio.clearRecording();
     setFinishedNotes(null);
-    setTranscriptionSource(null);
     setRecordedBlob(null);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     setSaveMessage(null);
     setSessionTimes(null);
-  }, [audio, audioUrl, melody]);
+  }, [audio, audioUrl]);
 
   const handleSave = useCallback(async () => {
     if (!sessionTimes) return;
@@ -166,8 +161,6 @@ export function SongRecorder({
     }
   }, [finishedNotes, recordedBlob, sessionTimes, tuningKey]);
 
-  const displayNotes = recording ? melody.notes : finishedNotes;
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -190,17 +183,14 @@ export function SongRecorder({
             </button>
             <span className="flex items-center gap-2 text-sm text-red-400">
               <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-              Recording {formatDuration(melody.elapsedMs)}
-            </span>
-            <span className="text-xs text-[var(--c-text-muted)]">
-              {melody.noteCount} notes captured live
+              Recording {formatDuration(elapsedMs)}
             </span>
           </>
         )}
 
         {transcribing && (
           <span className="text-sm text-[var(--c-text-muted)]">
-            Transcribing recording…
+            Detecting notes…
           </span>
         )}
 
@@ -225,13 +215,9 @@ export function SongRecorder({
             >
               {saving ? 'Saving…' : 'Save to Library'}
             </button>
-            {transcriptionSource && (
-              <span className="text-xs text-[var(--c-text-muted)]">
-                {transcriptionSource === 'offline'
-                  ? `${finishedNotes.length} notes from audio analysis`
-                  : `${finishedNotes.length} notes from live capture`}
-              </span>
-            )}
+            <span className="text-xs text-[var(--c-text-muted)]">
+              {finishedNotes.length} notes detected
+            </span>
           </>
         )}
       </div>
@@ -244,16 +230,10 @@ export function SongRecorder({
         <audio controls src={audioUrl} className="w-full max-w-md" />
       )}
 
-      {(recording || finishedNotes || transcribing) && (
+      {!recording && (finishedNotes || transcribing) && (
         <SheetMusicScore
-          notes={displayNotes ?? []}
-          title={
-            transcribing
-              ? 'Transcribing…'
-              : recording
-                ? 'Live transcription'
-                : 'Sheet music'
-          }
+          notes={finishedNotes ?? []}
+          title={transcribing ? 'Detecting notes…' : 'Sheet music'}
         />
       )}
     </div>
