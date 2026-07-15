@@ -73,7 +73,10 @@ begin
     'new_users_7d', (
       select count(*)::int from public.profiles
       where created_at > now() - interval '7 days'
-    )
+    ),
+    'total_shared_links', (select count(*)::int from public.shared_links),
+    'active_shared_links', (select count(*)::int from public.shared_links where revoked_at is null),
+    'shared_link_views', (select coalesce(sum(view_count), 0)::int from public.shared_links)
   ) into result;
 
   return result;
@@ -206,3 +209,67 @@ $$;
 
 revoke all on function public.admin_list_users(int) from public;
 grant execute on function public.admin_list_users(int) to authenticated;
+
+-- All share links, for tracking/moderation.
+create or replace function public.admin_list_shared_links(row_limit int default 50)
+returns table (
+  link_id uuid,
+  token text,
+  owner_display_name text,
+  session_label text,
+  has_audio boolean,
+  view_count integer,
+  last_viewed_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin_user() then
+    raise exception 'Not authorized';
+  end if;
+
+  return query
+  select
+    sl.id as link_id,
+    sl.token,
+    p.display_name as owner_display_name,
+    case when ps.scale_key = 'melody' then 'Song recording' else ps.root || ' ' || ps.scale_key end as session_label,
+    ps.has_audio,
+    sl.view_count,
+    sl.last_viewed_at,
+    sl.revoked_at,
+    sl.created_at
+  from public.shared_links sl
+  join public.practice_sessions ps on ps.id = sl.session_id
+  join public.profiles p on p.id = sl.user_id
+  order by sl.created_at desc
+  limit greatest(1, least(row_limit, 200));
+end;
+$$;
+
+revoke all on function public.admin_list_shared_links(int) from public;
+grant execute on function public.admin_list_shared_links(int) to authenticated;
+
+-- Lets an admin kill any share link (e.g. abuse/moderation), regardless of owner.
+create or replace function public.admin_revoke_shared_link(p_link_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin_user() then
+    raise exception 'Not authorized';
+  end if;
+
+  update public.shared_links set revoked_at = now()
+  where id = p_link_id and revoked_at is null;
+end;
+$$;
+
+revoke all on function public.admin_revoke_shared_link(uuid) from public;
+grant execute on function public.admin_revoke_shared_link(uuid) to authenticated;

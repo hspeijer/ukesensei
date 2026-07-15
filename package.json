@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "setup:cloud": "./scripts/setup-cloud.sh",
     "setup:db": "./scripts/push-db.sh",
-    "admin:grant": "./scripts/grant-admin.sh"
+    "admin:grant": "./scripts/grant-admin.sh",
+    "spaces:create-bucket": "node scripts/spaces-admin.mjs create-bucket",
+    "spaces:cors": "node scripts/spaces-admin.mjs put-cors",
+    "spaces:list": "node scripts/spaces-admin.mjs list"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1087.0",

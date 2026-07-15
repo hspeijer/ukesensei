@@ -106,38 +106,18 @@ export function Layout({
 
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="flex gap-0.5 sm:gap-1 bg-[var(--c-surface)] rounded-lg p-0.5 sm:p-1">
-                <NavButton
-                  active={instrument === 'ukulele'}
-                  onClick={() => onInstrumentChange('ukulele')}
-                >
-                  Uke
-                </NavButton>
-                <NavButton
-                  active={instrument === 'bass'}
-                  onClick={() => onInstrumentChange('bass')}
-                >
-                  Bass
-                </NavButton>
-                <NavButton
-                  active={instrument === 'guitar'}
-                  onClick={() => onInstrumentChange('guitar')}
-                >
-                  Guitar
-                </NavButton>
-                <NavButton
-                  active={instrument === 'clarinet'}
-                  onClick={() => onInstrumentChange('clarinet')}
-                >
-                  Clarinet
-                </NavButton>
-                <NavButton
-                  active={instrument === 'voice'}
-                  onClick={() => onInstrumentChange('voice')}
-                >
-                  Voice
-                </NavButton>
-              </div>
+              <select
+                value={instrument}
+                onChange={(e) => onInstrumentChange(e.target.value as Instrument)}
+                aria-label="Instrument"
+                className="bg-[var(--c-surface)] text-[var(--c-text-on-input)] border border-[var(--c-border)] rounded-lg px-2 py-1 text-xs sm:text-sm font-medium"
+              >
+                <option value="ukulele">Uke</option>
+                <option value="bass">Bass</option>
+                <option value="guitar">Guitar</option>
+                <option value="clarinet">Clarinet</option>
+                <option value="voice">Voice</option>
+              </select>
 
               {tunings && (
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -158,49 +138,53 @@ export function Layout({
               )}
             </div>
 
-            <nav className="flex gap-0.5 sm:gap-1 bg-[var(--c-surface)] rounded-lg p-0.5 sm:p-1 overflow-x-auto scrollbar-none">
-              <NavButton
+            <nav
+              role="tablist"
+              aria-label="Main navigation"
+              className="flex gap-3 sm:gap-4 lg:gap-6 border-b border-[var(--c-border-subtle)] overflow-x-auto scrollbar-none"
+            >
+              <TabButton
                 active={view === 'freeplay'}
                 onClick={() => onViewChange('freeplay')}
               >
                 Free Play
-              </NavButton>
+              </TabButton>
               {exercisesAvailable && (
-                <NavButton
+                <TabButton
                   active={view === 'exercises'}
                   onClick={() => onViewChange('exercises')}
                 >
                   Exercises
-                </NavButton>
+                </TabButton>
               )}
               {lessonsAvailable && (
-                <NavButton
+                <TabButton
                   active={view === 'lessons'}
                   onClick={() => onViewChange('lessons')}
                 >
                   Lessons
-                </NavButton>
+                </TabButton>
               )}
-              <NavButton
+              <TabButton
                 active={view === 'library' || view === 'playback'}
                 onClick={() => onViewChange('library')}
               >
                 Library
-              </NavButton>
+              </TabButton>
               {showUser && profile?.is_admin && (
-                <NavButton
+                <TabButton
                   active={view === 'admin'}
                   onClick={() => onViewChange('admin')}
                 >
                   Admin
-                </NavButton>
+                </TabButton>
               )}
-              <NavButton
+              <TabButton
                 active={view === 'about'}
                 onClick={() => onViewChange('about')}
               >
                 About
-              </NavButton>
+              </TabButton>
             </nav>
           </div>
         </div>
@@ -214,7 +198,7 @@ export function Layout({
   );
 }
 
-function NavButton({
+function TabButton({
   active,
   onClick,
   children,
@@ -225,12 +209,14 @@ function NavButton({
 }) {
   return (
     <button
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       className={`
-        px-2 sm:px-3 lg:px-4 py-1 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap shrink-0
+        px-0.5 pb-1.5 sm:pb-2 -mb-px border-b-2 text-xs sm:text-sm font-medium transition-all whitespace-nowrap shrink-0
         ${active
-          ? 'bg-teal-600 text-white shadow-sm'
-          : 'text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)]'
+          ? 'border-teal-600 text-[var(--c-text-strong)]'
+          : 'border-transparent text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)]'
         }
       `}
     >

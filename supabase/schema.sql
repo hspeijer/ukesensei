@@ -110,6 +110,115 @@ create policy "session_audio_delete_own" on storage.objects
     and auth.uid()::text = (storage.foldername(name))[1]
   );
 
+-- Lets anyone holding a valid (non-revoked) share link fetch/sign the
+-- underlying audio object for that one session — additive to (OR'd with)
+-- the owner-only policy above, so it doesn't loosen access to anything else.
+drop policy if exists "session_audio_select_shared" on storage.objects;
+create policy "session_audio_select_shared" on storage.objects
+  for select using (
+    bucket_id = 'session-audio'
+    and exists (
+      select 1 from public.shared_links sl
+      join public.practice_sessions ps on ps.id = sl.session_id
+      where sl.revoked_at is null
+        and ps.audio_path = storage.objects.name
+    )
+  );
+
+-- Share links let a user hand out a token that resolves (via a
+-- security-definer RPC below) to a read-only view of one practice session,
+-- without exposing the practice_sessions table to arbitrary readers.
+create table if not exists public.shared_links (
+  id uuid primary key default gen_random_uuid(),
+  token text not null unique,
+  user_id uuid references public.profiles on delete cascade not null,
+  session_id uuid references public.practice_sessions on delete cascade not null,
+  created_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  view_count integer not null default 0,
+  last_viewed_at timestamptz
+);
+
+create index if not exists shared_links_user_id_idx on public.shared_links (user_id);
+create index if not exists shared_links_session_id_idx on public.shared_links (session_id);
+
+alter table public.shared_links enable row level security;
+
+drop policy if exists "shared_links_select_own" on public.shared_links;
+create policy "shared_links_select_own" on public.shared_links
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "shared_links_insert_own" on public.shared_links;
+create policy "shared_links_insert_own" on public.shared_links
+  for insert with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.practice_sessions ps
+      where ps.id = session_id and ps.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "shared_links_update_own" on public.shared_links;
+create policy "shared_links_update_own" on public.shared_links
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "shared_links_delete_own" on public.shared_links;
+create policy "shared_links_delete_own" on public.shared_links
+  for delete using (auth.uid() = user_id);
+
+-- Resolves a share token to the underlying session, for anyone holding the
+-- link — including visitors with no account at all (anon role), which is
+-- the whole point of a share link. Runs as security definer since the
+-- normal RLS on practice_sessions/shared_links is owner-only.
+create or replace function public.get_shared_session(p_token text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result json;
+begin
+  update public.shared_links
+    set view_count = view_count + 1, last_viewed_at = now()
+    where token = p_token and revoked_at is null;
+
+  if not found then
+    raise exception 'Link not found or revoked';
+  end if;
+
+  select json_build_object(
+    'session', json_build_object(
+      'id', ps.id,
+      'createdAt', ps.created_at,
+      'scaleKey', ps.scale_key,
+      'root', ps.root,
+      'bpm', ps.bpm,
+      'tuningKey', ps.tuning_key,
+      'startedAt', ps.started_at,
+      'endedAt', ps.ended_at,
+      'durationSec', ps.duration_sec,
+      'pitchAccuracy', ps.pitch_accuracy,
+      'timingOnTimePercent', ps.timing_on_time_percent,
+      'overallScore', ps.overall_score,
+      'notes', ps.notes_json,
+      'hasAudio', ps.has_audio,
+      'audioPath', ps.audio_path
+    ),
+    'sharedBy', p.display_name
+  ) into result
+  from public.shared_links sl
+  join public.practice_sessions ps on ps.id = sl.session_id
+  join public.profiles p on p.id = sl.user_id
+  where sl.token = p_token;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.get_shared_session(text) from public;
+grant execute on function public.get_shared_session(text) to anon, authenticated;
+
 -- Avatars are small, non-sensitive images shown throughout the UI, so the
 -- bucket is public (readable without a signed URL) — only writes are
 -- restricted to the owning user's own folder.

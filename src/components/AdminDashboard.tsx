@@ -2,13 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchAdminOverview,
   fetchAdminRecentLogins,
+  fetchAdminSharedLinks,
   fetchAdminTopUsers,
   fetchAdminUsers,
+  adminRevokeSharedLink,
   type AdminOverview,
   type AdminRecentLogin,
+  type AdminSharedLink,
   type AdminTopUser,
   type AdminUserRow,
 } from '../api/adminApi';
+import { getErrorMessage } from '../lib/errors';
+import { useAuth } from '../auth/AuthProvider';
 
 function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -23,35 +28,59 @@ function formatDate(iso: string | null): string {
 }
 
 export function AdminDashboard() {
+  const { refreshProfile } = useAuth();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [topUsers, setTopUsers] = useState<AdminTopUser[]>([]);
   const [recentLogins, setRecentLogins] = useState<AdminRecentLogin[]>([]);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [sharedLinks, setSharedLinks] = useState<AdminSharedLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [o, top, logins, all] = await Promise.all([
+      const [o, top, logins, all, links] = await Promise.all([
         fetchAdminOverview(),
         fetchAdminTopUsers(),
         fetchAdminRecentLogins(),
         fetchAdminUsers(),
+        fetchAdminSharedLinks(),
       ]);
       setOverview(o);
       setTopUsers(top);
       setRecentLogins(logins);
       setUsers(all);
+      setSharedLinks(links);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load admin data');
+      setError(getErrorMessage(err, 'Failed to load admin data'));
+      // The nav only gets us here if the cached profile looked like an
+      // admin's, but that can go stale (session swapped out from under us,
+      // admin flag revoked elsewhere, etc). Re-sync it so the UI reflects
+      // reality — e.g. falling back to the sign-in view — instead of being
+      // stuck on this error with no way out but a manual reload.
+      void refreshProfile();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshProfile]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleRevoke = useCallback(async (linkId: string) => {
+    if (!window.confirm('Revoke this share link? Anyone with the link will lose access immediately.')) return;
+    setRevokingId(linkId);
+    try {
+      await adminRevokeSharedLink(linkId);
+      setSharedLinks((prev) => prev.map((l) => (l.link_id === linkId ? { ...l, revoked_at: new Date().toISOString() } : l)));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to revoke link'));
+    } finally {
+      setRevokingId(null);
+    }
+  }, []);
 
   if (loading) {
     return <div className="text-center py-12 text-[var(--c-text-muted)]">Loading admin reports…</div>;
@@ -91,6 +120,9 @@ export function AdminDashboard() {
           <StatCard label="New users (7d)" value={String(overview.new_users_7d)} />
           <StatCard label="Sessions" value={String(overview.total_sessions)} />
           <StatCard label="Practice time" value={formatDuration(overview.total_practice_sec)} />
+          <StatCard label="Shared links" value={String(overview.total_shared_links)} />
+          <StatCard label="Active shared links" value={String(overview.active_shared_links)} />
+          <StatCard label="Shared link views" value={String(overview.shared_link_views)} />
         </div>
       )}
 
@@ -154,6 +186,59 @@ export function AdminDashboard() {
               ))}
               {recentLogins.length === 0 && (
                 <tr><td colSpan={4} className="px-3 py-4 text-center text-[var(--c-text-muted)]">No logins yet</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-[var(--c-text-muted)] uppercase tracking-wider mb-2">
+          Shared links
+        </h3>
+        <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[var(--c-text-muted)] border-b border-[var(--c-border)]">
+                <th className="px-3 py-2">Owner</th>
+                <th className="px-3 py-2">Session</th>
+                <th className="px-3 py-2">Views</th>
+                <th className="px-3 py-2">Last viewed</th>
+                <th className="px-3 py-2">Created</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {sharedLinks.map((l) => (
+                <tr key={l.link_id} className="border-b border-[var(--c-border)]/50">
+                  <td className="px-3 py-2 text-[var(--c-text-strong)]">{l.owner_display_name ?? '—'}</td>
+                  <td className="px-3 py-2">{l.session_label}{!l.has_audio && <span className="text-[var(--c-text-muted)]"> (no audio)</span>}</td>
+                  <td className="px-3 py-2">{l.view_count}</td>
+                  <td className="px-3 py-2 text-[var(--c-text-muted)]">{formatDate(l.last_viewed_at)}</td>
+                  <td className="px-3 py-2 text-[var(--c-text-muted)]">{formatDate(l.created_at)}</td>
+                  <td className="px-3 py-2">
+                    {l.revoked_at ? (
+                      <span className="text-[var(--c-text-muted)]">Revoked</span>
+                    ) : (
+                      <span className="text-teal-400">Active</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {!l.revoked_at && (
+                      <button
+                        onClick={() => handleRevoke(l.link_id)}
+                        disabled={revokingId === l.link_id}
+                        className="text-red-400 hover:underline disabled:opacity-50"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {sharedLinks.length === 0 && (
+                <tr><td colSpan={7} className="px-3 py-4 text-center text-[var(--c-text-muted)]">No shared links yet</td></tr>
               )}
             </tbody>
           </table>

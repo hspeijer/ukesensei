@@ -65,6 +65,20 @@ export function About() {
           </p>
         </Section>
 
+        <Section title="Your music, your choice">
+          <p>
+            Your recordings belong to you, full stop. You can download any saved session as an
+            audio file, and share links for individual recordings are on the way — so you'll be
+            able to share a performance with someone else on your own terms, whenever you choose.
+          </p>
+          <p>
+            Down the road, we plan to add AI-powered analysis to help you understand your playing
+            in more depth. When that lands, it will always be something you opt into — we'll ask
+            for your permission before any recording is used for AI analysis, never as a silent
+            default.
+          </p>
+        </Section>
+
         <Section title="Made by and for musicians">
           <p>
             Uke Sensei is built by musicians, for musicians. It will always be free to use, with

@@ -74,6 +74,30 @@ yarn install
 yarn dev
 ```
 
+### Recording storage (DigitalOcean Spaces)
+
+Practice-session and lesson recordings currently upload straight to Supabase Storage (`session-audio` bucket, one folder per user), which comfortably handles today's short audio clips.
+
+For larger recordings (e.g. longer lesson videos), the project also provisions a DigitalOcean Spaces bucket — an S3-compatible object store — with the same per-user-folder convention: `<bucket>/<userId>/<recordingId>.ext`. `doctl` can only manage Spaces *keys*, not buckets, so bucket creation/config goes through the S3 API via `scripts/spaces-admin.mjs`:
+
+```bash
+# 1. Create a Spaces access key scoped to the bucket (bucket can not yet exist
+#    for a fullaccess grant — see scripts/spaces-admin.mjs comments if you hit
+#    "Invalid Grant Combination").
+doctl spaces keys create ukesensei-recordings \
+  --grants 'bucket=ukesensei-recordings;permission=readwrite'
+
+# 2. Put the resulting access key/secret + region/bucket into .env as
+#    DO_SPACES_REGION, DO_SPACES_BUCKET, DO_SPACES_ACCESS_KEY_ID,
+#    DO_SPACES_SECRET_ACCESS_KEY (see .env.example).
+
+# 3. Create the bucket and configure CORS for browser uploads:
+yarn spaces:create-bucket
+yarn spaces:cors
+```
+
+These are server-side credentials only — never ship the secret key to the browser. Uploading directly from the browser to Spaces needs a small server endpoint to mint short-lived presigned URLs (the secret key must stay off the client); that endpoint isn't wired up yet, so this bucket is provisioned and ready but not yet in the live upload path.
+
 ### Rebuilding the WASM audio engine (optional)
 
 A pre-built `public/audio-engine.wasm` is included in the repository. To rebuild it from source:

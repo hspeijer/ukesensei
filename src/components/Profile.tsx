@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { getErrorMessage } from '../lib/errors';
 
 const ACCEPTED_TYPES = 'image/png,image/jpeg,image/webp,image/gif';
 
@@ -35,7 +36,7 @@ export function Profile() {
     try {
       await uploadAvatar(file);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload image. Please try again.');
+      setError(getErrorMessage(err, 'Could not upload image. Please try again.'));
     } finally {
       setUploading(false);
     }
@@ -47,7 +48,7 @@ export function Profile() {
     try {
       await removeAvatar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove image. Please try again.');
+      setError(getErrorMessage(err, 'Could not remove image. Please try again.'));
     } finally {
       setRemoving(false);
     }

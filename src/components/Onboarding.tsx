@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../auth/AuthProvider';
+import { getErrorMessage } from '../lib/errors';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
@@ -148,7 +149,7 @@ export function Onboarding({ onComplete }: { onComplete?: () => void }) {
       await completeOnboarding(displayName, contactEmail, passwordToApply);
       onComplete?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your profile. Please try again.');
+      setError(getErrorMessage(err, 'Could not save your profile. Please try again.'));
       setSaving(false);
     }
   };

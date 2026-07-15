@@ -8,6 +8,9 @@ export interface AdminOverview {
   logins_7d: number;
   logins_30d: number;
   new_users_7d: number;
+  total_shared_links: number;
+  active_shared_links: number;
+  shared_link_views: number;
 }
 
 export interface AdminTopUser {
@@ -39,6 +42,18 @@ export interface AdminUserRow {
   is_admin: boolean;
   onboarding_complete: boolean;
   session_count: number;
+  created_at: string;
+}
+
+export interface AdminSharedLink {
+  link_id: string;
+  token: string;
+  owner_display_name: string | null;
+  session_label: string;
+  has_audio: boolean;
+  view_count: number;
+  last_viewed_at: string | null;
+  revoked_at: string | null;
   created_at: string;
 }
 
@@ -76,4 +91,21 @@ export async function fetchAdminUsers(limit = 50): Promise<AdminUserRow[]> {
   const { data, error } = await supabase.rpc('admin_list_users', { row_limit: limit });
   if (error) throw error;
   return (data ?? []) as AdminUserRow[];
+}
+
+export async function fetchAdminSharedLinks(limit = 50): Promise<AdminSharedLink[]> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { data, error } = await supabase.rpc('admin_list_shared_links', { row_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as AdminSharedLink[];
+}
+
+export async function adminRevokeSharedLink(linkId: string): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase not configured');
+
+  const { error } = await supabase.rpc('admin_revoke_shared_link', { p_link_id: linkId });
+  if (error) throw error;
 }

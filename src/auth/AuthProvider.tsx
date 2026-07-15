@@ -69,14 +69,43 @@ function credentialEmail(name: string): string {
 }
 
 /**
+ * True when an error indicates the session's user no longer exists server
+ * side (e.g. the underlying auth.users row was deleted/reset while the
+ * browser still holds a cached session for it). Once this happens, every
+ * request signed with that session fails the same way — auth calls reject
+ * the JWT's `sub`, and any insert that references it (like creating a
+ * `profiles` row) hits a foreign-key violation. The only fix is to drop the
+ * stale session and start a fresh one, not to retry the same request.
+ */
+function isMissingAuthUserError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { message?: string; code?: string };
+  const message = (err.message ?? '').toLowerCase();
+  return (
+    err.code === 'user_not_found' ||
+    err.code === '23503' ||
+    message.includes('sub claim in jwt does not exist') ||
+    message.includes('violates foreign key constraint') ||
+    message.includes('is not present in table')
+  );
+}
+
+/**
  * Interprets an error from updating the login credential (email/password).
  * Only a genuine name conflict should read as "that name is taken" — errors
  * like "same as current value" mean there was nothing to change (safe to
  * ignore), and anything else is unexpected and worth logging rather than
  * misreporting as a naming conflict.
  */
-function handleCredentialUpdateError(credError: { code?: string; message?: string } | null): void {
+async function handleCredentialUpdateError(
+  credError: { code?: string; message?: string } | null,
+  recoverStaleSession: () => Promise<void>,
+): Promise<void> {
   if (!credError) return;
+  if (isMissingAuthUserError(credError)) {
+    await recoverStaleSession();
+    throw new Error('Your session needed a refresh — please try again.');
+  }
   if (credError.code === 'email_exists' || credError.code === 'user_already_exists') {
     throw new Error('That name is already taken with a different key — try another name or key.');
   }
@@ -130,6 +159,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const openOnboarding = useCallback(() => setForceOnboarding(true), []);
   const closeOnboarding = useCallback(() => setForceOnboarding(false), []);
 
+  // Drops a stale session (one whose user no longer exists server side) and
+  // starts a brand-new anonymous one, so the app can recover on its own
+  // instead of getting permanently stuck failing every auth/profile request.
+  const recoverStaleSession = useCallback(async () => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    console.warn('Detected a stale session (user no longer exists server-side) — starting fresh.');
+    setProfile(null);
+    setUser(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Sign-out during stale-session recovery failed (continuing anyway):', err);
+    }
+    try {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        console.warn('Failed to start a fresh anonymous session:', error);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.warn('Failed to start a fresh anonymous session:', err);
+      setLoading(false);
+    }
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (!user) return;
     const p = await loadProfile(user.id);
@@ -179,6 +234,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.warn('Failed to load profile:', err);
+        if (isMissingAuthUserError(err)) {
+          await recoverStaleSession();
+          return;
+        }
       }
       setLoading(false);
     };
@@ -190,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [recoverStaleSession]);
 
   const signOut = useCallback(async () => {
     const supabase = getSupabase();
@@ -231,6 +290,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // account.
     const { error: updateError } = await supabase.auth.updateUser({ email, password });
     if (updateError) {
+      if (isMissingAuthUserError(updateError)) {
+        console.warn('Stale session detected while claiming identity — recovering.');
+        await recoverStaleSession();
+        return 'error' as const;
+      }
       // Only a genuine "that name is already registered" conflict should
       // read as "wrong password" — anything else (rate limits, network
       // blips, etc.) gets surfaced as a real error instead of being
@@ -243,7 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return 'taken' as const;
     }
     return 'linked' as const;
-  }, []);
+  }, [recoverStaleSession]);
 
   const signInAsAdmin = useCallback(async (email: string, password: string) => {
     const supabase = getSupabase();
@@ -269,14 +333,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: credentialEmail(displayName),
         password,
       });
-      handleCredentialUpdateError(credError);
+      await handleCredentialUpdateError(credError, recoverStaleSession);
     } else if (!profile?.is_admin && profile?.onboarding_complete) {
       // Editing without changing the password — still keep the login email
       // in sync in case the display name changed.
       const { error: credError } = await supabase.auth.updateUser({
         email: credentialEmail(displayName),
       });
-      handleCredentialUpdateError(credError);
+      await handleCredentialUpdateError(credError, recoverStaleSession);
     }
 
     const { error } = await supabase
@@ -289,7 +353,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .eq('id', user.id);
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingAuthUserError(error)) {
+        await recoverStaleSession();
+        throw new Error('Your session needed a refresh — please try again.');
+      }
+      throw error;
+    }
 
     const localLessons = useAppStore.getState().completedLessons;
     for (const lessonId of localLessons) {
@@ -298,7 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const p = await loadProfile(user.id);
     setProfile(p);
-  }, [user, profile]);
+  }, [user, profile, recoverStaleSession]);
 
   const uploadAvatar = useCallback(async (file: File) => {
     if (!user) throw new Error('Not signed in');

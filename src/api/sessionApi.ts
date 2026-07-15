@@ -259,6 +259,34 @@ export async function getStats(): Promise<DashboardStats> {
   };
 }
 
+/**
+ * Fetches a session's audio as a blob and triggers a browser download with a
+ * friendly filename, rather than just opening the (often cross-origin,
+ * signed) URL in a new tab.
+ */
+export async function downloadSessionAudio(session: SessionSummary): Promise<void> {
+  const url = await resolveAudioUrl(session.id);
+  if (!url) throw new Error('No audio recording available for this session.');
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch the recording.');
+  const blob = await response.blob();
+
+  const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+  const dateStr = new Date(session.createdAt).toISOString().slice(0, 10);
+  const label = session.scaleKey === 'melody' ? 'song' : `${session.root}-${session.scaleKey}`;
+  const filename = `uke-sensei-${label}-${dateStr}.${ext}`;
+
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const url = localAudioUrls.get(id);
   if (url && isLocalSessionId(id)) URL.revokeObjectURL(url);

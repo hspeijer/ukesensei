@@ -3,6 +3,7 @@ import {
   getSessions,
   getStats,
   deleteSession as apiDeleteSession,
+  downloadSessionAudio,
   type SessionSummary,
   type DashboardStats,
 } from '../api/sessionApi';
@@ -204,10 +205,24 @@ function SessionCard({
   onClick: () => void;
   onDelete: () => void;
 }) {
+  const [downloading, setDownloading] = useState(false);
   const scaleDef = SCALE_DEFINITIONS[session.scaleKey];
   const date = new Date(session.createdAt);
   const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadSessionAudio(session);
+    } catch {
+      /* silently ignore — recording may no longer be available */
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div
@@ -252,6 +267,26 @@ function SessionCard({
           </span>
         )}
       </div>
+
+      {/* Download */}
+      {session.hasAudio && (
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="opacity-0 group-hover:opacity-100 text-[var(--c-text-muted)] hover:text-teal-400 transition p-1 disabled:opacity-50"
+          title="Download recording"
+        >
+          {downloading ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+              <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+            </svg>
+          )}
+        </button>
+      )}
 
       {/* Delete */}
       <button
