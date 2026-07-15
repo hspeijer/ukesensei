@@ -100,12 +100,11 @@ function LessonRow({
 
   return (
     <button
-      onClick={unlocked ? onSelect : undefined}
-      disabled={!unlocked}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-all ${
+      onClick={onSelect}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-all cursor-pointer ${
         unlocked
-          ? 'bg-[var(--c-surface)] border-[var(--c-border)] hover:border-teal-500/50 cursor-pointer'
-          : 'bg-[var(--c-surface)]/50 border-[var(--c-border-subtle)] opacity-55 cursor-not-allowed'
+          ? 'bg-[var(--c-surface)] border-[var(--c-border)] hover:border-teal-500/50'
+          : 'bg-[var(--c-surface)]/50 border-[var(--c-border-subtle)] opacity-70 hover:opacity-90 hover:border-[var(--c-border)]'
       }`}
     >
       {/* Status icon */}
@@ -141,11 +140,9 @@ function LessonRow({
         <p className="text-xs text-[var(--c-text-muted)] truncate">{lesson.summary}</p>
       </div>
 
-      {unlocked && (
-        <svg className="shrink-0 text-[var(--c-text-muted)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-      )}
+      <svg className="shrink-0 text-[var(--c-text-muted)]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M9 18l6-6-6-6" />
+      </svg>
     </button>
   );
 }

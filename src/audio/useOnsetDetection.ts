@@ -62,10 +62,7 @@ export function useOnsetDetection(getAnalyser: () => AnalyserNode | null, isActi
 
   const detect = useCallback(() => {
     const analyser = getAnalyser();
-    if (!analyser) {
-      rafRef.current = requestAnimationFrame(detect);
-      return;
-    }
+    if (!analyser) return;
 
     if (!bufferRef.current || bufferRef.current.length !== analyser.fftSize) {
       bufferRef.current = new Float32Array(analyser.fftSize);
@@ -97,9 +94,26 @@ export function useOnsetDetection(getAnalyser: () => AnalyserNode | null, isActi
         ? floorRef.current + (rms - floorRef.current) * FLOOR_RISE
         : floorRef.current + (rms - floorRef.current) * FLOOR_FALL;
     }
-
-    rafRef.current = requestAnimationFrame(detect);
   }, [getAnalyser, setDetectedHit]);
+
+  useEffect(() => {
+    let rafId: number;
+    const loop = () => {
+      detect();
+      rafId = requestAnimationFrame(loop);
+    };
+    if (isActive) {
+      floorRef.current = 0.01;
+      lastOnsetAtRef.current = 0;
+      rafId = requestAnimationFrame(loop);
+    } else {
+      setDetectedHit(null);
+    }
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isActive, detect, setDetectedHit]);
+}
 
   useEffect(() => {
     if (isActive) {

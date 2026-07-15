@@ -511,11 +511,14 @@ export default function App() {
 
   const handleStartCheckpoint = useCallback(() => {
     const lesson = selectedLessonId && curriculum ? curriculum.getLessonById(selectedLessonId) : undefined;
-    if (lesson) runCheckpoint(lesson);
-  }, [selectedLessonId, runCheckpoint, curriculum]);
+    if (lesson && curriculum?.isLessonUnlocked(lesson.id, completedLessons)) {
+      runCheckpoint(lesson);
+    }
+  }, [selectedLessonId, runCheckpoint, curriculum, completedLessons]);
 
   const handleStartPractice = useCallback((practice: PracticeExercise) => {
     if (!curriculum) return;
+    if (selectedLessonId && !curriculum.isLessonUnlocked(selectedLessonId, completedLessons)) return;
     if (isRhythmPractice(practice)) {
       startCustomRhythmExercise({
         pattern: practice.pattern,
@@ -535,7 +538,7 @@ export default function App() {
       lessonId: selectedLessonId ?? undefined,
       bpm: practice.bpm,
     });
-  }, [startCustomExercise, startCustomRhythmExercise, selectedLessonId, curriculum]);
+  }, [startCustomExercise, startCustomRhythmExercise, selectedLessonId, curriculum, completedLessons]);
 
   const handleCheckpointContinue = useCallback(() => {
     const lessonId = exercise?.lessonId;
@@ -718,6 +721,7 @@ export default function App() {
             curriculum={curriculum}
             lesson={lesson}
             completed={completedLessons.includes(lesson.id)}
+            unlocked={curriculum.isLessonUnlocked(lesson.id, completedLessons)}
             onStartCheckpoint={handleStartCheckpoint}
             onStartPractice={handleStartPractice}
             onBack={() => setSelectedLessonId(null)}
