@@ -22,4 +22,5 @@ export interface UserProfile {
   preferred_key: string;
   onboarding_complete: boolean;
   is_admin: boolean;
+  avatar_url: string | null;
 }

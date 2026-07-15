@@ -15,6 +15,9 @@ create table if not exists public.profiles (
 alter table public.profiles
   add column if not exists contact_email text;
 
+alter table public.profiles
+  add column if not exists avatar_url text;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -104,5 +107,37 @@ drop policy if exists "session_audio_delete_own" on storage.objects;
 create policy "session_audio_delete_own" on storage.objects
   for delete using (
     bucket_id = 'session-audio'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Avatars are small, non-sensitive images shown throughout the UI, so the
+-- bucket is public (readable without a signed URL) — only writes are
+-- restricted to the owning user's own folder.
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+drop policy if exists "avatars_select_public" on storage.objects;
+create policy "avatars_select_public" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+drop policy if exists "avatars_insert_own" on storage.objects;
+create policy "avatars_insert_own" on storage.objects
+  for insert with check (
+    bucket_id = 'avatars'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "avatars_update_own" on storage.objects;
+create policy "avatars_update_own" on storage.objects
+  for update using (
+    bucket_id = 'avatars'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "avatars_delete_own" on storage.objects;
+create policy "avatars_delete_own" on storage.objects
+  for delete using (
+    bucket_id = 'avatars'
     and auth.uid()::text = (storage.foldername(name))[1]
   );

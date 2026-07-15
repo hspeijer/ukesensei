@@ -38,7 +38,13 @@ interface AuthContextValue {
    * conflict so the UI doesn't misreport it as "wrong password".
    */
   claimIdentity: (name: string, password: string) => Promise<'resumed' | 'linked' | 'taken' | 'error'>;
+  /** Upload/replace the current user's avatar image. Throws with a user-facing message on failure. */
+  uploadAvatar: (file: File) => Promise<void>;
+  /** Clear the current user's avatar, reverting to the default placeholder. */
+  removeAvatar: () => Promise<void>;
 }
+
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -88,7 +94,7 @@ async function loadProfile(userId: string): Promise<UserProfile | null> {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, display_name, contact_email, preferred_key, onboarding_complete, is_admin')
+    .select('id, display_name, contact_email, preferred_key, onboarding_complete, is_admin, avatar_url')
     .eq('id', userId)
     .maybeSingle();
 
@@ -97,7 +103,7 @@ async function loadProfile(userId: string): Promise<UserProfile | null> {
     const { data: created, error: insertError } = await supabase
       .from('profiles')
       .insert({ id: userId })
-      .select('id, display_name, contact_email, preferred_key, onboarding_complete, is_admin')
+      .select('id, display_name, contact_email, preferred_key, onboarding_complete, is_admin, avatar_url')
       .single();
     if (insertError) throw insertError;
     return created as UserProfile;
@@ -294,6 +300,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(p);
   }, [user, profile]);
 
+  const uploadAvatar = useCallback(async (file: File) => {
+    if (!user) throw new Error('Not signed in');
+    const supabase = getSupabase();
+    if (!supabase) throw new Error('Auth not configured');
+
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please choose an image file.');
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      throw new Error('Image must be smaller than 5MB.');
+    }
+
+    // Fixed filename per user (upsert) so we don't accumulate orphaned
+    // files across re-uploads; the query string cache-busts the CDN/browser
+    // cache since the underlying object path never changes.
+    const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const path = `${user.id}/avatar.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { contentType: file.type, upsert: true });
+    if (uploadError) throw new Error(uploadError.message || 'Failed to upload image.');
+
+    const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const avatarUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (error) throw error;
+
+    setProfile((p) => (p ? { ...p, avatar_url: avatarUrl } : p));
+  }, [user]);
+
+  const removeAvatar = useCallback(async () => {
+    if (!user) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: null, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (error) throw error;
+
+    setProfile((p) => (p ? { ...p, avatar_url: null } : p));
+  }, [user]);
+
   const value = useMemo<AuthContextValue>(() => ({
     configured: isSupabaseConfigured,
     loading,
@@ -307,7 +362,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     openOnboarding,
     closeOnboarding,
     claimIdentity,
-  }), [loading, user, profile, signOut, signInAsAdmin, completeOnboarding, refreshProfile, forceOnboarding, openOnboarding, closeOnboarding, claimIdentity]);
+    uploadAvatar,
+    removeAvatar,
+  }), [loading, user, profile, signOut, signInAsAdmin, completeOnboarding, refreshProfile, forceOnboarding, openOnboarding, closeOnboarding, claimIdentity, uploadAvatar, removeAvatar]);
 
   return (
     <AuthContext.Provider value={value}>

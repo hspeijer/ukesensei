@@ -36,7 +36,7 @@ export function Layout({
   children,
 }: LayoutProps) {
   const tunings = isStringInstrument(instrument) ? TUNINGS_BY_INSTRUMENT[instrument] : null;
-  const { profile, signOut, configured, openOnboarding } = useAuth();
+  const { profile, signOut, configured } = useAuth();
   const showUser = configured && profile?.onboarding_complete;
 
   return (
@@ -55,11 +55,22 @@ export function Layout({
             <div className="flex items-center gap-2 shrink-0">
               {showUser && profile?.display_name && (
                 <button
-                  onClick={openOnboarding}
-                  title="Edit profile"
-                  className="hidden sm:inline text-xs text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] truncate max-w-[120px] px-2 py-1 rounded-md hover:bg-[var(--c-surface)] transition"
+                  onClick={() => onViewChange('profile')}
+                  title="View profile"
+                  className="hidden sm:inline-flex items-center gap-1.5 text-xs text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] px-2 py-1 rounded-md hover:bg-[var(--c-surface)] transition"
                 >
-                  {profile.display_name}
+                  {profile.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-[var(--c-surface)] border border-[var(--c-border)] flex items-center justify-center text-[9px] font-semibold shrink-0">
+                      {profile.display_name.trim()[0]?.toUpperCase() ?? '?'}
+                    </span>
+                  )}
+                  <span className="truncate max-w-[100px]">{profile.display_name}</span>
                 </button>
               )}
               {showUser && (

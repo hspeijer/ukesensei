@@ -29,6 +29,7 @@ import { AdminSignIn } from './components/AdminSignIn';
 import { LessonPath } from './components/LessonPath';
 import { LessonDetail } from './components/LessonDetail';
 import { About } from './components/About';
+import { Profile } from './components/Profile';
 import { SCALE_DEFINITIONS, SCALE_KEYS } from './theory/scales';
 import { CHROMATIC_NOTES, type NoteName } from './theory/notes';
 import { useChordDetection } from './audio/useChordDetection';
@@ -488,6 +489,18 @@ export default function App() {
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <About />
+      </Layout>
+    );
+  }
+
+  if (view === 'profile') {
+    return (
+      <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
+        tuningKey={tuningKey} onTuningChange={setTuning}
+        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        lessonsAvailable={!!curriculum}
+        exercisesAvailable={instrument !== 'clarinet'}>
+        <Profile />
       </Layout>
     );
   }

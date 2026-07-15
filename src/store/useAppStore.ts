@@ -5,7 +5,7 @@ import { DEFAULT_TUNING_KEY, TUNINGS_BY_INSTRUMENT, isStringInstrument, supports
 import { pathToState } from '../routing/url';
 import { hasCurriculum } from '../lessons/registry';
 
-export type AppView = 'freeplay' | 'exercises' | 'lessons' | 'library' | 'playback' | 'admin' | 'about';
+export type AppView = 'freeplay' | 'exercises' | 'lessons' | 'library' | 'playback' | 'admin' | 'about' | 'profile';
 export type TuningKey = string;
 export type Theme = 'dark' | 'light';
 export type { Instrument };
