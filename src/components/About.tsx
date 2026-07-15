@@ -68,8 +68,8 @@ export function About() {
         <Section title="Your music, your choice">
           <p>
             Your recordings belong to you, full stop. You can download any saved session as an
-            audio file, and share links for individual recordings are on the way — so you'll be
-            able to share a performance with someone else on your own terms, whenever you choose.
+            audio file, and generate a share link for it whenever you like — so you can send a
+            performance to someone else on your own terms, and revoke that link at any time.
           </p>
           <p>
             Down the road, we plan to add AI-powered analysis to help you understand your playing

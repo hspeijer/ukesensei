@@ -79,51 +79,17 @@ create table if not exists public.practice_sessions (
   audio_path text
 );
 
+-- 'supabase' = audio_path is a key in the session-audio Storage bucket.
+-- 'spaces'   = audio_path is a key in the DigitalOcean Spaces bucket
+--              (large/long recordings — see api/recordings/*).
+alter table public.practice_sessions
+  add column if not exists audio_provider text not null default 'supabase';
+
 alter table public.practice_sessions enable row level security;
 
 drop policy if exists "practice_sessions_all_own" on public.practice_sessions;
 create policy "practice_sessions_all_own" on public.practice_sessions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-insert into storage.buckets (id, name, public)
-values ('session-audio', 'session-audio', false)
-on conflict (id) do nothing;
-
-drop policy if exists "session_audio_insert_own" on storage.objects;
-create policy "session_audio_insert_own" on storage.objects
-  for insert with check (
-    bucket_id = 'session-audio'
-    and auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-drop policy if exists "session_audio_select_own" on storage.objects;
-create policy "session_audio_select_own" on storage.objects
-  for select using (
-    bucket_id = 'session-audio'
-    and auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-drop policy if exists "session_audio_delete_own" on storage.objects;
-create policy "session_audio_delete_own" on storage.objects
-  for delete using (
-    bucket_id = 'session-audio'
-    and auth.uid()::text = (storage.foldername(name))[1]
-  );
-
--- Lets anyone holding a valid (non-revoked) share link fetch/sign the
--- underlying audio object for that one session — additive to (OR'd with)
--- the owner-only policy above, so it doesn't loosen access to anything else.
-drop policy if exists "session_audio_select_shared" on storage.objects;
-create policy "session_audio_select_shared" on storage.objects
-  for select using (
-    bucket_id = 'session-audio'
-    and exists (
-      select 1 from public.shared_links sl
-      join public.practice_sessions ps on ps.id = sl.session_id
-      where sl.revoked_at is null
-        and ps.audio_path = storage.objects.name
-    )
-  );
 
 -- Share links let a user hand out a token that resolves (via a
 -- security-definer RPC below) to a read-only view of one practice session,
@@ -203,7 +169,8 @@ begin
       'overallScore', ps.overall_score,
       'notes', ps.notes_json,
       'hasAudio', ps.has_audio,
-      'audioPath', ps.audio_path
+      'audioPath', ps.audio_path,
+      'audioProvider', ps.audio_provider
     ),
     'sharedBy', p.display_name
   ) into result
@@ -218,6 +185,46 @@ $$;
 
 revoke all on function public.get_shared_session(text) from public;
 grant execute on function public.get_shared_session(text) to anon, authenticated;
+
+insert into storage.buckets (id, name, public)
+values ('session-audio', 'session-audio', false)
+on conflict (id) do nothing;
+
+drop policy if exists "session_audio_insert_own" on storage.objects;
+create policy "session_audio_insert_own" on storage.objects
+  for insert with check (
+    bucket_id = 'session-audio'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "session_audio_select_own" on storage.objects;
+create policy "session_audio_select_own" on storage.objects
+  for select using (
+    bucket_id = 'session-audio'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "session_audio_delete_own" on storage.objects;
+create policy "session_audio_delete_own" on storage.objects
+  for delete using (
+    bucket_id = 'session-audio'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Lets anyone holding a valid (non-revoked) share link fetch/sign the
+-- underlying audio object for that one session — additive to (OR'd with)
+-- the owner-only policy above, so it doesn't loosen access to anything else.
+drop policy if exists "session_audio_select_shared" on storage.objects;
+create policy "session_audio_select_shared" on storage.objects
+  for select using (
+    bucket_id = 'session-audio'
+    and exists (
+      select 1 from public.shared_links sl
+      join public.practice_sessions ps on ps.id = sl.session_id
+      where sl.revoked_at is null
+        and ps.audio_path = storage.objects.name
+    )
+  );
 
 -- Avatars are small, non-sensitive images shown throughout the UI, so the
 -- bucket is public (readable without a signed URL) — only writes are

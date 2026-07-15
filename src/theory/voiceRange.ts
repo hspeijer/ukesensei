@@ -19,7 +19,7 @@ export interface VoiceRangeNote {
   midi: number;
 }
 
-function midiOf(note: NoteName, octave: number): number {
+export function midiOf(note: NoteName, octave: number): number {
   return (octave + 1) * 12 + noteToSemitone(note);
 }
 
