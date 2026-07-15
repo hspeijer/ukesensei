@@ -32,6 +32,7 @@ export function useExercise(opts: UseExerciseOptions = {}) {
   const setView = useAppStore((s) => s.setView);
   const tuning = useAppStore((s) => s.tuning);
   const instrument = useAppStore((s) => s.instrument);
+  const handpanLayoutKey = useAppStore((s) => s.handpanLayoutKey);
 
   const holdStartRef = useRef<number | null>(null);
   const lastNoteRef = useRef<string | null>(null);
@@ -41,7 +42,7 @@ export function useExercise(opts: UseExerciseOptions = {}) {
   const begin = useCallback(
     (root: NoteName, scaleKey: string, direction: ExerciseDirection = 'ascending', bpm: number | null = null, loops: number = 1) => {
       const board = instrument === 'voice' ? getVoiceRangeBoard()
-        : instrument === 'handpan' ? getHandpanBoard()
+        : instrument === 'handpan' ? getHandpanBoard(handpanLayoutKey)
         : generateFretboard(tuning);
       const config = createScaleExerciseFromBoard(root, scaleKey, board, direction);
       // Repeat the scale path for the requested number of loops
@@ -70,7 +71,7 @@ export function useExercise(opts: UseExerciseOptions = {}) {
       });
       setView('freeplay');
     },
-    [startExercise, setView, tuning, instrument],
+    [startExercise, setView, tuning, instrument, handpanLayoutKey],
   );
 
   const beginCustom = useCallback(

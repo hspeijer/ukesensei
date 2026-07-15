@@ -35,7 +35,6 @@ interface WasmAudioState {
   analyser: AnalyserNode | null;
   sourceNode: MediaStreamAudioSourceNode | null;
   eqNodes: Record<EqBand, BiquadFilterNode> | null;
-  destination: MediaStreamAudioDestinationNode | null;
 }
 
 export function useWasmAudio() {
@@ -47,7 +46,6 @@ export function useWasmAudio() {
     analyser: null,
     sourceNode: null,
     eqNodes: null,
-    destination: null,
   });
 
   const [isActive, setIsActive] = useState(false);
@@ -204,17 +202,12 @@ export function useWasmAudio() {
       // building up visible energy for sustained, tonal (pure) notes.
       analyser.smoothingTimeConstant = 0.15;
 
-      // A MediaStreamAudioDestinationNode gives the recorder a real MediaStream
-      // that reflects the EQ'd signal, instead of recording the raw mic input.
-      const destination = audioContext.createMediaStreamDestination();
-
       source.connect(gainNode);
       gainNode.connect(eqLow);
       eqLow.connect(eqMid);
       eqMid.connect(eqHigh);
       eqHigh.connect(workletNode);
       eqHigh.connect(analyser);
-      eqHigh.connect(destination);
 
       stateRef.current = {
         audioContext,
@@ -224,7 +217,6 @@ export function useWasmAudio() {
         analyser,
         sourceNode: source,
         eqNodes: { low: eqLow, mid: eqMid, high: eqHigh },
-        destination,
       };
       setIsActive(true);
     } catch (err) {
@@ -252,7 +244,6 @@ export function useWasmAudio() {
       analyser: null,
       sourceNode: null,
       eqNodes: null,
-      destination: null,
     };
     setIsActive(false);
     setWasmReady(false);
@@ -317,9 +308,13 @@ export function useWasmAudio() {
   // restarting on every pitch-detection re-render of the caller.
   const getAnalyser = useCallback(() => stateRef.current.analyser, []);
   const getSampleRate = useCallback(() => stateRef.current.audioContext?.sampleRate ?? 44100, []);
-  // The EQ'd destination stream, so recordings reflect the shaped tone.
-  // Falls back to the raw mic stream if the destination isn't ready yet.
-  const getStream = useCallback(() => stateRef.current.destination?.stream ?? stateRef.current.stream, []);
+  // Recording from a MediaStreamAudioDestinationNode (i.e. piping the mic
+  // through the Web Audio graph) is known to produce sped-up, glitchy
+  // MediaRecorder output in Chrome, since the graph's render clock can drift
+  // from real time under load. The raw getUserMedia stream doesn't have this
+  // problem, so recordings use it directly (the EQ still shapes what's
+  // analyzed/visualized live, just not what's captured to disk).
+  const getStream = useCallback(() => stateRef.current.stream, []);
 
   return {
     isActive,

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AppView, Instrument, TuningKey, Theme } from '../store/useAppStore';
 import { TUNINGS_BY_INSTRUMENT, isStringInstrument } from '../theory/fretboard';
+import { HANDPAN_LAYOUTS, HANDPAN_LAYOUT_KEYS, type HandpanLayoutKey } from '../theory/handpanLayout';
 import { useAuth } from '../auth/AuthProvider';
 import { Logo } from './Logo';
 
@@ -12,6 +13,8 @@ interface LayoutProps {
   tuningKey: TuningKey;
   onTuningChange: (key: TuningKey) => void;
   tuningAutoDetected: boolean;
+  handpanLayoutKey: HandpanLayoutKey;
+  onHandpanLayoutChange: (key: HandpanLayoutKey) => void;
   theme: Theme;
   onToggleTheme: () => void;
   /** Whether the current instrument has a lesson curriculum to show. */
@@ -29,6 +32,8 @@ export function Layout({
   tuningKey,
   onTuningChange,
   tuningAutoDetected,
+  handpanLayoutKey,
+  onHandpanLayoutChange,
   theme,
   onToggleTheme,
   lessonsAvailable,
@@ -45,31 +50,9 @@ export function Layout({
       <header className="border-b border-[var(--c-border-subtle)] px-3 sm:px-4 lg:px-6 py-2 sm:py-3 shrink-0">
         <div className="max-w-6xl mx-auto flex flex-col gap-2 sm:gap-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0">
               <Logo className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" />
-            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={onToggleTheme}
-                aria-label="Toggle theme"
-                className="p-1.5 sm:p-2 rounded-lg text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] hover:bg-[var(--c-surface)] transition-all"
-              >
-              {theme === 'dark' ? (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                  <path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.061l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.061l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.061 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06L5.404 4.344a.75.75 0 10-1.06 1.06l1.06 1.061z" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                  <path fillRule="evenodd" d="M7.455 2.004a.75.75 0 01.26.77 7 7 0 009.958 7.967.75.75 0 011.067.853A8.5 8.5 0 116.647 1.921a.75.75 0 01.808.083z" clipRule="evenodd" />
-                </svg>
-              )}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <select
                 value={instrument}
                 onChange={(e) => onInstrumentChange(e.target.value as Instrument)}
@@ -102,57 +85,109 @@ export function Layout({
                   )}
                 </div>
               )}
+
+              {instrument === 'handpan' && (
+                <select
+                  value={handpanLayoutKey}
+                  onChange={(e) => onHandpanLayoutChange(e.target.value as HandpanLayoutKey)}
+                  aria-label="Handpan scale"
+                  title={HANDPAN_LAYOUTS[handpanLayoutKey].description}
+                  className="bg-[var(--c-surface)] text-[var(--c-text-on-input)] border border-[var(--c-border)] rounded-lg px-2 py-1 text-xs max-w-[160px] sm:max-w-none"
+                >
+                  {HANDPAN_LAYOUT_KEYS.map((key) => (
+                    <option key={key} value={key}>{HANDPAN_LAYOUTS[key].name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
-            <nav
-              role="tablist"
-              aria-label="Main navigation"
-              className="flex gap-3 sm:gap-4 lg:gap-6 border-b border-[var(--c-border-subtle)] overflow-x-auto scrollbar-none"
-            >
-              <TabButton
-                active={view === 'freeplay'}
-                onClick={() => onViewChange('freeplay')}
-              >
-                Free Play
-              </TabButton>
-              {exercisesAvailable && (
-                <TabButton
-                  active={view === 'exercises'}
-                  onClick={() => onViewChange('exercises')}
+            <div className="flex items-center gap-2 shrink-0">
+              {showUser && profile?.display_name && (
+                <button
+                  onClick={() => onViewChange('profile')}
+                  title="View profile"
+                  className="flex items-center gap-1.5 text-xs text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] px-2 py-1 rounded-md hover:bg-[var(--c-surface)] transition"
                 >
-                  Exercises
-                </TabButton>
+                  {profile.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover shrink-0"
+                    />
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-[var(--c-surface)] border border-[var(--c-border)] flex items-center justify-center text-[9px] font-semibold shrink-0">
+                      {profile.display_name.trim()[0]?.toUpperCase() ?? '?'}
+                    </span>
+                  )}
+                  <span className="hidden sm:inline truncate max-w-[100px]">{profile.display_name}</span>
+                </button>
               )}
-              {lessonsAvailable && (
-                <TabButton
-                  active={view === 'lessons'}
-                  onClick={() => onViewChange('lessons')}
-                >
-                  Lessons
-                </TabButton>
-              )}
-              <TabButton
-                active={view === 'library' || view === 'playback'}
-                onClick={() => onViewChange('library')}
+              <button
+                onClick={onToggleTheme}
+                aria-label="Toggle theme"
+                className="p-1.5 sm:p-2 rounded-lg text-[var(--c-text-muted)] hover:text-[var(--c-text-strong)] hover:bg-[var(--c-surface)] transition-all"
               >
-                Library
-              </TabButton>
-              {showUser && profile?.is_admin && (
-                <TabButton
-                  active={view === 'admin'}
-                  onClick={() => onViewChange('admin')}
-                >
-                  Admin
-                </TabButton>
+              {theme === 'dark' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.061l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.061l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.061 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06L5.404 4.344a.75.75 0 10-1.06 1.06l1.06 1.061z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M7.455 2.004a.75.75 0 01.26.77 7 7 0 009.958 7.967.75.75 0 011.067.853A8.5 8.5 0 116.647 1.921a.75.75 0 01.808.083z" clipRule="evenodd" />
+                </svg>
               )}
-              <TabButton
-                active={view === 'about'}
-                onClick={() => onViewChange('about')}
-              >
-                About
-              </TabButton>
-            </nav>
+              </button>
+            </div>
           </div>
+
+          <nav
+            role="tablist"
+            aria-label="Main navigation"
+            className="flex gap-3 sm:gap-4 lg:gap-6 border-b border-[var(--c-border-subtle)] overflow-x-auto scrollbar-none"
+          >
+            <TabButton
+              active={view === 'freeplay'}
+              onClick={() => onViewChange('freeplay')}
+            >
+              Free Play
+            </TabButton>
+            {exercisesAvailable && (
+              <TabButton
+                active={view === 'exercises'}
+                onClick={() => onViewChange('exercises')}
+              >
+                Exercises
+              </TabButton>
+            )}
+            {lessonsAvailable && (
+              <TabButton
+                active={view === 'lessons'}
+                onClick={() => onViewChange('lessons')}
+              >
+                Lessons
+              </TabButton>
+            )}
+            <TabButton
+              active={view === 'library' || view === 'playback'}
+              onClick={() => onViewChange('library')}
+            >
+              Library
+            </TabButton>
+            {showUser && profile?.is_admin && (
+              <TabButton
+                active={view === 'admin'}
+                onClick={() => onViewChange('admin')}
+              >
+                Admin
+              </TabButton>
+            )}
+            <TabButton
+              active={view === 'about'}
+              onClick={() => onViewChange('about')}
+            >
+              About
+            </TabButton>
+          </nav>
         </div>
       </header>
 

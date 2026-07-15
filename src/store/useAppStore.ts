@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { NoteName } from '../theory/notes';
 import type { FretPosition, Instrument, InstrumentTuning } from '../theory/fretboard';
 import { DEFAULT_TUNING_KEY, TUNINGS_BY_INSTRUMENT, isStringInstrument, supportsExercises } from '../theory/fretboard';
+import { DEFAULT_HANDPAN_LAYOUT_KEY, isHandpanLayoutKey, type HandpanLayoutKey } from '../theory/handpanLayout';
 import { pathToState } from '../routing/url';
 import { hasCurriculum } from '../lessons/registry';
 import type { CajonHitType, RhythmStep } from '../exercises/cajonPatterns';
@@ -94,6 +95,15 @@ function getInitialInstrument(): Instrument {
   return 'ukulele';
 }
 
+const HANDPAN_LAYOUT_KEY = 'uke-sensei-handpan-layout';
+
+function getInitialHandpanLayoutKey(): HandpanLayoutKey {
+  if (typeof window === 'undefined') return DEFAULT_HANDPAN_LAYOUT_KEY;
+  const stored = localStorage.getItem(HANDPAN_LAYOUT_KEY);
+  if (stored && isHandpanLayoutKey(stored)) return stored;
+  return DEFAULT_HANDPAN_LAYOUT_KEY;
+}
+
 function applyThemeClass(theme: Theme) {
   if (typeof document === 'undefined') return;
   const el = document.documentElement;
@@ -122,6 +132,10 @@ interface AppState {
   setTuning: (key: TuningKey) => void;
   tuningAutoDetected: boolean;
   setTuningAutoDetected: (v: boolean) => void;
+
+  // Handpan scale/layout (handpan's equivalent of a tuning)
+  handpanLayoutKey: HandpanLayoutKey;
+  setHandpanLayoutKey: (key: HandpanLayoutKey) => void;
 
   // Audio
   isListening: boolean;
@@ -267,6 +281,13 @@ export const useAppStore = create<AppState>((set) => ({
     })),
   tuningAutoDetected: false,
   setTuningAutoDetected: (tuningAutoDetected) => set({ tuningAutoDetected }),
+
+  handpanLayoutKey: getInitialHandpanLayoutKey(),
+  setHandpanLayoutKey: (handpanLayoutKey) =>
+    set(() => {
+      localStorage.setItem(HANDPAN_LAYOUT_KEY, handpanLayoutKey);
+      return { handpanLayoutKey };
+    }),
 
   isListening: false,
   setListening: (isListening) => set({ isListening }),

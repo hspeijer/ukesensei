@@ -79,6 +79,8 @@ export default function App() {
   const tuning = useAppStore((s) => s.tuning);
   const setTuning = useAppStore((s) => s.setTuning);
   const tuningAutoDetected = useAppStore((s) => s.tuningAutoDetected);
+  const handpanLayoutKey = useAppStore((s) => s.handpanLayoutKey);
+  const setHandpanLayoutKey = useAppStore((s) => s.setHandpanLayoutKey);
   const theme = useAppStore((s) => s.theme);
   const toggleTheme = useAppStore((s) => s.toggleTheme);
   const fretboardInverted = useAppStore((s) => s.fretboardInverted);
@@ -641,7 +643,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <SessionLibrary onSelectSession={handleSelectSession} />
@@ -653,7 +657,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <SessionPlayback sessionId={selectedSessionId} onBack={handleBackToLibrary} />
@@ -665,7 +671,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <About />
@@ -677,7 +685,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <Profile />
@@ -690,7 +700,9 @@ export default function App() {
       return (
         <Layout view="freeplay" onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
           tuningKey={tuningKey} onTuningChange={setTuning}
-          tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+          tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
           lessonsAvailable={!!curriculum}
           exercisesAvailable={instrument !== 'clarinet'}>
           <AdminSignIn />
@@ -700,7 +712,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <AdminDashboard />
@@ -713,7 +727,9 @@ export default function App() {
     return (
       <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
         tuningKey={tuningKey} onTuningChange={setTuning}
-        tuningAutoDetected={tuningAutoDetected} theme={theme} onToggleTheme={toggleTheme}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme}
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         {lesson ? (
@@ -747,6 +763,8 @@ export default function App() {
       tuningKey={tuningKey}
       onTuningChange={setTuning}
       tuningAutoDetected={tuningAutoDetected}
+      handpanLayoutKey={handpanLayoutKey}
+      onHandpanLayoutChange={setHandpanLayoutKey}
       theme={theme}
       onToggleTheme={toggleTheme}
       lessonsAvailable={!!curriculum}
@@ -804,7 +822,7 @@ export default function App() {
           </div>
         ) : instrument === 'handpan' ? (
           <div className="mx-auto sm:mx-0">
-            <HandpanPanel detectedNote={detectedNote} onPlayNote={synth.playNote} />
+            <HandpanPanel layoutKey={handpanLayoutKey} detectedNote={detectedNote} onPlayNote={synth.playNote} />
           </div>
         ) : instrument === 'cajon' ? (
           <div className="mx-auto sm:mx-0">

@@ -38,6 +38,18 @@ export function noteToVexKey(note: NoteName, octave: number): string {
   return `${letter}${acc}/${octave}`;
 }
 
+/**
+ * EasyScore pitch token, e.g. "c4", "f#5". Unlike `noteToVexKey`, EasyScore's
+ * grammar expects the octave to immediately follow the note letter/accidental
+ * with no slash (the slash is reserved for the duration that follows, e.g.
+ * "c4/q"). Reusing `noteToVexKey` here would make EasyScore fail to parse.
+ */
+function noteToEasyScorePitch(note: NoteName, octave: number): string {
+  const letter = note[0].toLowerCase();
+  const acc = note.includes('#') ? '#' : note.includes('b') ? 'b' : '';
+  return `${letter}${acc}${octave}`;
+}
+
 export function midiFromNote(note: NoteName, octave: number): number {
   return (octave + 1) * 12 + noteToSemitone(note);
 }
@@ -104,11 +116,11 @@ function tokenBeats(token: string): number {
 }
 
 function restToken(beats: number): string {
-  if (beats >= 4) return 'B4/w';
-  if (beats >= 2) return 'B4/h';
-  if (beats >= 1) return 'B4/q';
-  if (beats >= 0.5) return 'B4/8';
-  return 'B4/16';
+  if (beats >= 4) return 'B4/w/r';
+  if (beats >= 2) return 'B4/h/r';
+  if (beats >= 1) return 'B4/q/r';
+  if (beats >= 0.5) return 'B4/8/r';
+  return 'B4/16/r';
 }
 
 /** Build EasyScore note tokens from captured melody segments. */
@@ -120,8 +132,8 @@ export function melodyToEasyScoreTokens(notes: MelodyNote[]): string[] {
       ? notes[i + 1].startMs - n.startMs
       : Math.max(n.durationMs, 500);
     const dur = gapToDurationType(gap);
-    const key = noteToVexKey(n.note, n.octave);
-    return `${key}/${dur}`;
+    const pitch = noteToEasyScorePitch(n.note, n.octave);
+    return `${pitch}/${dur}`;
   });
 }
 

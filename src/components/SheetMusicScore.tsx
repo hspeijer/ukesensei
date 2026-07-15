@@ -50,8 +50,12 @@ export function SheetMusicScore({ notes, title, className = '' }: SheetMusicScor
           });
 
           const voiceNotes = score.notes(line, { stem: 'auto' });
-          const voice = score.voice(voiceNotes, { time: '4/4' });
-          voice.setMode(Voice.Mode.SOFT);
+          // Build the voice manually (rather than via `score.voice`, which
+          // adds tickables immediately in strict mode) so SOFT mode is set
+          // *before* tickables are added. Otherwise a line with more than a
+          // measure's worth of notes throws "Too many ticks" before we get a
+          // chance to relax the mode.
+          const voice = vf.Voice({ time: '4/4' }).setMode(Voice.Mode.SOFT).addTickables(voiceNotes);
 
           if (voiceNotes.length > 1) {
             try {

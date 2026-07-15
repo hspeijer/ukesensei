@@ -53,9 +53,10 @@ export const AUDIO_CONFIG_BY_INSTRUMENT: Record<
   // voiceRange.ts. A larger analysis window helps resolve the lower notes,
   // similar to bass/guitar.
   voice: { minFrequency: 110, maxFrequency: 600, analysisSize: 4096 },
-  // D Kurd handpan spans Ding D3 (~146.8 Hz) up to A4 (~440 Hz); give some
+  // Handpan layouts span from the lowest Ding (C3, ~130.8 Hz) up to the
+  // highest tone field (C5, ~523 Hz, on the 10-tone layouts); give some
   // headroom on both ends since handpans ring with strong overtones.
-  handpan: { minFrequency: 130, maxFrequency: 900, analysisSize: 4096 },
+  handpan: { minFrequency: 120, maxFrequency: 900, analysisSize: 4096 },
   // Cajon has no stable pitch -- this entry only exists to satisfy the
   // Record<Instrument, ...> map. Cajon ignores detectedNote entirely and is
   // graded by useOnsetDetection.ts / useRhythmExercise.ts instead.
