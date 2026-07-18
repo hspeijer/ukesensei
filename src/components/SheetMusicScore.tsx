@@ -16,14 +16,24 @@ interface SheetMusicScoreProps {
    * inferred automatically from the melody's detected key.
    */
   chords?: Array<{ display: string } | null>;
+  /** Called with the index into `notes` when a notehead is clicked. */
+  onNoteClick?: (index: number) => void;
 }
 
-const LINE_HEIGHT = 130;
+const LINE_HEIGHT = 170;
+const TOP_MARGIN = 28;
 const PADDING = 30;
 const MEASURES_PER_LINE = 2;
 const ACTIVE_NOTE_COLOR = '#2dd4bf';
 
-export function SheetMusicScore({ notes, title, className = '', activeNoteIndex = -1, chords }: SheetMusicScoreProps) {
+export function SheetMusicScore({
+  notes,
+  title,
+  className = '',
+  activeNoteIndex = -1,
+  chords,
+  onNoteClick,
+}: SheetMusicScoreProps) {
   const elementId = useId().replace(/:/g, '');
   const [renderError, setRenderError] = useState<string | null>(null);
   // Snap the captured melody's timing onto a tempo grid before notating it,
@@ -37,7 +47,7 @@ export function SheetMusicScore({ notes, title, className = '', activeNoteIndex 
   const chordLabels = chords ?? inferredChords;
   const height = useMemo(() => {
     const lines = Math.max(1, scoreLines.length);
-    return lines * LINE_HEIGHT + PADDING * 2 + (title ? 20 : 0);
+    return lines * LINE_HEIGHT + TOP_MARGIN + PADDING * 2 + (title ? 20 : 0);
   }, [scoreLines.length, title]);
 
   // Maps an original note index to every VexFlow StaveNote rendered for it
@@ -70,13 +80,23 @@ export function SheetMusicScore({ notes, title, className = '', activeNoteIndex 
         const beams: VexBeam[] = [];
 
         scoreLines.forEach((line, lineIndex) => {
-          const system = vf.System({
-            x: 10,
-            y: PADDING + (title ? 20 : 0) + lineIndex * LINE_HEIGHT,
-            width: width - 20,
-          });
+          const lineY = PADDING + (title ? 20 : 0) + TOP_MARGIN + lineIndex * LINE_HEIGHT;
+          const lineWidth = width - 20;
+          const measureWidth = lineWidth / line.measures.length;
 
           line.measures.forEach((measure, measureIndex) => {
+            // Each measure gets its own System (rather than sharing one System
+            // per line) because System.addStave stacks multiple staves added
+            // to the *same* System vertically -- it's meant for simultaneous
+            // parts (e.g. a piano grand staff), not sequential measures. A
+            // System per measure, positioned side by side along the line,
+            // keeps every measure on the same horizontal row.
+            const system = vf.System({
+              x: 10 + measureIndex * measureWidth,
+              y: lineY,
+              width: measureWidth,
+            });
+
             const score = vf.EasyScore();
             const tokenStr = measure.map((m) => m.token).join(', ');
             const voiceNotes = score.notes(tokenStr, { stem: 'auto' });
@@ -127,6 +147,17 @@ export function SheetMusicScore({ notes, title, className = '', activeNoteIndex 
         }
         noteElementsRef.current = noteElements;
 
+        if (onNoteClick) {
+          for (const [noteIndex, vexNotes] of noteElements) {
+            for (const vexNote of vexNotes) {
+              const el = vexNote.getSVGElement();
+              if (!el) continue;
+              el.style.cursor = 'pointer';
+              el.addEventListener('click', () => onNoteClick(noteIndex));
+            }
+          }
+        }
+
         // Re-apply any highlight that was already active before this (re-)render.
         if (highlightedIndexRef.current >= 0) {
           for (const n of noteElements.get(highlightedIndexRef.current) ?? []) {
@@ -142,7 +173,7 @@ export function SheetMusicScore({ notes, title, className = '', activeNoteIndex 
     })();
 
     return () => { cancelled = true; };
-  }, [elementId, notes, height, title, scoreLines, chordLabels]);
+  }, [elementId, notes, height, title, scoreLines, chordLabels, onNoteClick]);
 
   // Toggle just the previous/next active note's style rather than
   // re-rendering the whole score, so this stays cheap enough to run on

@@ -67,6 +67,7 @@ export function SongRecorder({
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [sessionTimes, setSessionTimes] = useState<{ start: number; end: number } | null>(null);
+  const [selectedNoteIndex, setSelectedNoteIndex] = useState<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const {
     audioRef, currentTime, duration, isPlaying, toggle: togglePlayback, seek: seekTo,
@@ -93,6 +94,7 @@ export function SongRecorder({
     audio.clearRecording();
     resetClock();
     setElapsedMs(0);
+    setSelectedNoteIndex(null);
 
     if (!isListening) await onEnsureListening();
 
@@ -142,7 +144,12 @@ export function SongRecorder({
     setAudioUrl(null);
     setSaveMessage(null);
     setSessionTimes(null);
+    setSelectedNoteIndex(null);
   }, [audio, audioUrl, resetClock]);
+
+  const handleNoteClick = useCallback((index: number) => {
+    setSelectedNoteIndex(index);
+  }, []);
 
   // Computed once here (rather than left for SheetMusicScore to infer on its
   // own) so the exact same chords shown in the preview are what gets saved.
@@ -187,10 +194,13 @@ export function SongRecorder({
     seekTo(fraction * duration);
   }, [duration, seekTo]);
 
-  const activeNoteIndex = audioUrl
+  const playingNoteIndex = audioUrl
     ? findActiveMelodyNoteIndex(finishedNotes ?? [], currentTime * 1000)
     : -1;
-  const activeMelodyNote = activeNoteIndex >= 0 ? (finishedNotes ?? [])[activeNoteIndex] : null;
+  // While playing, the moving playback cursor wins; otherwise show whichever
+  // note was last clicked in the sheet music, if any.
+  const displayNoteIndex = isPlaying ? playingNoteIndex : (selectedNoteIndex ?? playingNoteIndex);
+  const displayedMelodyNote = displayNoteIndex >= 0 ? (finishedNotes ?? [])[displayNoteIndex] : null;
   const tuning = isStringInstrument(instrument) ? findTuningByKey(tuningKey) : null;
 
   return (
@@ -300,8 +310,9 @@ export function SongRecorder({
         <SheetMusicScore
           notes={finishedNotes ?? []}
           title={transcribing ? 'Detecting notes…' : 'Sheet music'}
-          activeNoteIndex={activeNoteIndex}
+          activeNoteIndex={displayNoteIndex}
           chords={chordLabels}
+          onNoteClick={handleNoteClick}
         />
       )}
 
@@ -312,10 +323,10 @@ export function SongRecorder({
           </div>
           <Fretboard
             tuning={tuning}
-            root={activeMelodyNote?.note ?? 'C'}
+            root={displayedMelodyNote?.note ?? 'C'}
             scaleKey="ionian"
             showScale={false}
-            detectedNote={activeMelodyNote}
+            detectedNote={displayedMelodyNote}
           />
         </div>
       )}

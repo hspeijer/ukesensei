@@ -35,6 +35,7 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
   const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedNoteIndex, setSelectedNoteIndex] = useState<number | null>(null);
   const { user } = useAuth();
 
   const {
@@ -46,6 +47,7 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
 
   useEffect(() => {
     let cancelled = false;
+    setSelectedNoteIndex(null);
     (async () => {
       try {
         setLoading(true);
@@ -129,6 +131,10 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
     [session],
   );
 
+  const handleNoteClick = useCallback((index: number) => {
+    setSelectedNoteIndex(index);
+  }, []);
+
   if (loading) {
     return <div className="text-center py-12 text-(--c-text-muted)">Loading session...</div>;
   }
@@ -156,8 +162,11 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
   const pitchColor = session.pitchAccuracy >= 80 ? '#34d399' : session.pitchAccuracy >= 50 ? '#fbbf24' : '#f87171';
   const timingColor = session.timingOnTimePercent >= 75 ? '#34d399' : session.timingOnTimePercent >= 40 ? '#fbbf24' : '#f87171';
   const scoreColor = session.overallScore >= 70 ? '#34d399' : session.overallScore >= 40 ? '#fbbf24' : '#f87171';
-  const activeNoteIndex = audioUrl ? findActiveMelodyNoteIndex(melodyNotes, currentTime * 1000) : -1;
-  const activeMelodyNote = activeNoteIndex >= 0 ? melodyNotes[activeNoteIndex] : null;
+  const playingNoteIndex = audioUrl ? findActiveMelodyNoteIndex(melodyNotes, currentTime * 1000) : -1;
+  // While playing, the moving playback cursor wins; otherwise show whichever
+  // note was last clicked in the sheet music, if any.
+  const displayNoteIndex = isPlaying ? playingNoteIndex : (selectedNoteIndex ?? playingNoteIndex);
+  const displayedMelodyNote = displayNoteIndex >= 0 ? melodyNotes[displayNoteIndex] : null;
   const tuning = findTuningByKey(session.tuningKey);
 
   return (
@@ -362,12 +371,13 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
         <SheetMusicScore
           notes={melodyNotes}
           title="Sheet Music"
-          activeNoteIndex={activeNoteIndex}
+          activeNoteIndex={displayNoteIndex}
           chords={session.chords ?? undefined}
+          onNoteClick={handleNoteClick}
         />
       )}
 
-      {/* Fretboard, highlighting whichever note is playing right now */}
+      {/* Fretboard, highlighting whichever note is playing (or was clicked) */}
       {audioUrl && tuning && (
         <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3">
           <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
@@ -375,10 +385,10 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
           </div>
           <Fretboard
             tuning={tuning}
-            root={activeMelodyNote?.note ?? 'C'}
+            root={displayedMelodyNote?.note ?? 'C'}
             scaleKey="ionian"
             showScale={false}
-            detectedNote={activeMelodyNote}
+            detectedNote={displayedMelodyNote}
           />
         </div>
       )}
