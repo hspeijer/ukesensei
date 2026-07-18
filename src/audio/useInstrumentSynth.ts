@@ -7,6 +7,7 @@ import { useVoiceSynth } from './useVoiceSynth';
 import { useHandpanSynth } from './useHandpanSynth';
 import { useCajonSynth } from './useCajonSynth';
 import { useHarmonicaSynth } from './useHarmonicaSynth';
+import { useCelloSynth } from './useCelloSynth';
 
 /**
  * Type guard to narrow synth to a pitched instrument (with playNote).
@@ -35,8 +36,7 @@ export function useInstrumentSynth(instrument: Instrument = 'ukulele') {
     case 'guitar':
       return useGuitarSynth();
     case 'cello':
-      // Cello uses bowed string synthesis similar to bass/guitar
-      return useBassSynth();
+      return useCelloSynth();
     case 'clarinet':
       return useClarinetSynth();
     case 'voice':

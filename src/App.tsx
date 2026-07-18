@@ -3,11 +3,7 @@ import { useAppStore } from './store/useAppStore';
 import { useWasmAudio } from './audio/useWasmAudio';
 import { useMetronome } from './audio/useMetronome';
 import { useAudioRecorder } from './audio/useAudioRecorder';
-import { useUkeSynth } from './audio/useUkeSynth';
-import { useBassSynth } from './audio/useBassSynth';
-import { useGuitarSynth } from './audio/useGuitarSynth';
-import { useClarinetSynth } from './audio/useClarinetSynth';
-import { useVoiceSynth } from './audio/useVoiceSynth';
+import { useInstrumentSynth, isPitchedSynth } from './audio/useInstrumentSynth';
 import { useExercise } from './exercises/useExercise';
 import { useSession, type SessionResult } from './exercises/useSession';
 import { uploadSession, triggerAnalysis, type UploadMetadata } from './api/sessionApi';
@@ -37,11 +33,9 @@ import { ChordDisplay } from './components/ChordDisplay';
 import { ClarinetPanel } from './components/ClarinetPanel';
 import { VoicePanel } from './components/VoicePanel';
 import { HandpanPanel } from './components/HandpanPanel';
-import { useHandpanSynth } from './audio/useHandpanSynth';
 import { HarmonicaPanel } from './components/HarmonicaPanel';
-import { useHarmonicaSynth } from './audio/useHarmonicaSynth';
 import { CajonPanel } from './components/CajonPanel';
-import { useCajonSynth } from './audio/useCajonSynth';
+import type { CajonHitType } from './exercises/cajonPatterns';
 import { useOnsetDetection } from './audio/useOnsetDetection';
 import { useRhythmExercise, type CustomRhythmExerciseOptions } from './exercises/useRhythmExercise';
 import { CajonExerciseSelector } from './components/CajonExerciseSelector';
@@ -100,22 +94,10 @@ export default function App() {
   useUrlSync();
 
   const mic = useWasmAudio();
-  const ukeSynth = useUkeSynth();
-  const bassSynth = useBassSynth();
-  const guitarSynth = useGuitarSynth();
-  const clarinetSynth = useClarinetSynth();
-  const voiceSynth = useVoiceSynth();
-  const handpanSynth = useHandpanSynth();
-  const harmonicaSynth = useHarmonicaSynth();
-  const synth = instrument === 'bass' ? bassSynth
-    : instrument === 'guitar' ? guitarSynth
-    : instrument === 'clarinet' ? clarinetSynth
-    : instrument === 'voice' ? voiceSynth
-    : instrument === 'handpan' ? handpanSynth
-    : instrument === 'harmonica' ? harmonicaSynth
-    : ukeSynth;
-
-  const cajonSynth = useCajonSynth();
+  // Centralized per-instrument synth dispatch (see useInstrumentSynth.ts) --
+  // every instrument, including cello, gets its own voice from here rather
+  // than duplicating the instrument->synth mapping in multiple places.
+  const synth = useInstrumentSynth(instrument);
   useOnsetDetection(mic.getAnalyser, mic.isActive && instrument === 'cajon');
 
   const suppressDetection = useAppStore((s) => s.suppressDetection);
@@ -126,16 +108,16 @@ export default function App() {
   const previewNote = useCallback(
     (note: NoteName, octave: number) => {
       suppressDetection();
-      synth.playNote(note, octave);
+      if (isPitchedSynth(synth)) synth.playNote(note, octave);
     },
     [suppressDetection, synth],
   );
   const previewHit = useCallback(
-    (type: Parameters<typeof cajonSynth.playHit>[0]) => {
+    (type: CajonHitType) => {
       suppressDetection();
-      cajonSynth.playHit(type);
+      if (!isPitchedSynth(synth)) synth.playHit(type);
     },
-    [suppressDetection, cajonSynth],
+    [suppressDetection, synth],
   );
 
   const metronome = useMetronome();
