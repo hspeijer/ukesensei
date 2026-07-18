@@ -77,6 +77,16 @@ export function useOnsetDetection(getAnalyser: () => AnalyserNode | null, isActi
     const now = Date.now();
     const sinceLastOnset = now - lastOnsetAtRef.current;
 
+    // Ignore onsets right after the user clicked a pad to preview its sound
+    // — that's synth output leaking from the speakers into the mic, not an
+    // actual played hit.
+    if (now < useAppStore.getState().suppressDetectionUntil) {
+      floorRef.current = rms > floorRef.current
+        ? floorRef.current + (rms - floorRef.current) * FLOOR_RISE
+        : floorRef.current + (rms - floorRef.current) * FLOOR_FALL;
+      return;
+    }
+
     if (rms > MIN_ONSET_RMS && rms > floorRef.current * ONSET_RATIO && sinceLastOnset > REFRACTORY_MS) {
       const freqData = freqBufferRef.current;
       analyser.getByteFrequencyData(freqData);

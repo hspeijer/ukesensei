@@ -114,6 +114,26 @@ export default function App() {
   const cajonSynth = useCajonSynth();
   useOnsetDetection(mic.getAnalyser, mic.isActive && instrument === 'cajon');
 
+  const suppressDetection = useAppStore((s) => s.suppressDetection);
+  // Clicking a note/pad to preview its sound plays it through the speakers,
+  // which the mic can pick back up and mistake for the user actually
+  // playing it (e.g. falsely advancing an exercise). Muting detection
+  // briefly whenever a preview is triggered avoids that.
+  const previewNote = useCallback(
+    (note: NoteName, octave: number) => {
+      suppressDetection();
+      synth.playNote(note, octave);
+    },
+    [suppressDetection, synth],
+  );
+  const previewHit = useCallback(
+    (type: Parameters<typeof cajonSynth.playHit>[0]) => {
+      suppressDetection();
+      cajonSynth.playHit(type);
+    },
+    [suppressDetection, cajonSynth],
+  );
+
   const metronome = useMetronome();
   const recorder = useAudioRecorder();
   const { exercise, begin, beginCustom } = useExercise({ getNearestBeatOffset: metronome.getNearestBeatOffset });
@@ -815,19 +835,19 @@ export default function App() {
       <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 mb-3 sm:mb-4 lg:mb-6">
         {instrument === 'clarinet' ? (
           <div className="mx-auto sm:mx-0">
-            <ClarinetPanel detectedNote={detectedNote} onPlayNote={synth.playNote} />
+            <ClarinetPanel detectedNote={detectedNote} onPlayNote={previewNote} />
           </div>
         ) : instrument === 'voice' ? (
           <div className="mx-auto sm:mx-0">
-            <VoicePanel detectedNote={detectedNote} onPlayNote={synth.playNote} />
+            <VoicePanel detectedNote={detectedNote} onPlayNote={previewNote} />
           </div>
         ) : instrument === 'handpan' ? (
           <div className="mx-auto sm:mx-0">
-            <HandpanPanel layoutKey={handpanLayoutKey} detectedNote={detectedNote} onPlayNote={synth.playNote} />
+            <HandpanPanel layoutKey={handpanLayoutKey} detectedNote={detectedNote} onPlayNote={previewNote} />
           </div>
         ) : instrument === 'cajon' ? (
           <div className="mx-auto sm:mx-0">
-            <CajonPanel detectedHit={detectedHit} onPlayHit={cajonSynth.playHit} />
+            <CajonPanel detectedHit={detectedHit} onPlayHit={previewHit} />
           </div>
         ) : (
           <>
@@ -873,7 +893,7 @@ export default function App() {
                 targetPosition={targetPosition}
                 playedPositionIds={playedIds}
                 chordPositionIds={chordPositionIds}
-                onNoteClick={synth.playNote}
+                onNoteClick={previewNote}
               />
             </div>
             {instrument === 'ukulele' && (

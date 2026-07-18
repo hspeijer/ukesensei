@@ -146,6 +146,15 @@ interface AppState {
   setAudioLevel: (level: number) => void;
   detectedHit: DetectedHit | null;
   setDetectedHit: (hit: DetectedHit | null) => void;
+  /**
+   * Timestamp (ms, `Date.now()`) until which mic-driven pitch/onset
+   * detection should be ignored. Set whenever the user clicks a note/pad to
+   * preview its sound through the synth, so that the speaker output leaking
+   * back into the mic can't be mistaken for a played note and, e.g., falsely
+   * advance an exercise's target cursor.
+   */
+  suppressDetectionUntil: number;
+  suppressDetection: (ms?: number) => void;
 
   // Fretboard
   fretboardInverted: boolean;
@@ -321,6 +330,8 @@ export const useAppStore = create<AppState>((set) => ({
   setAudioLevel: (audioLevel) => set({ audioLevel }),
   detectedHit: null,
   setDetectedHit: (detectedHit) => set({ detectedHit }),
+  suppressDetectionUntil: 0,
+  suppressDetection: (ms = 600) => set({ suppressDetectionUntil: Date.now() + ms }),
 
   fretboardInverted: false,
   setFretboardInverted: (fretboardInverted) => set({ fretboardInverted }),

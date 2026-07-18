@@ -111,6 +111,14 @@ export function useWasmAudio() {
     logMetric('worklet.rms', rms);
     logMetric('worklet.levelSmoothed', smoothedLevelRef.current);
 
+    // Ignore pitch detection right after the user clicked a note to preview
+    // it — that sound comes out of the speakers and can leak into the mic,
+    // which would otherwise look identical to the user actually playing it.
+    if (Date.now() < useAppStore.getState().suppressDetectionUntil) {
+      setDetectedNote(null);
+      return;
+    }
+
     const { minFrequency, maxFrequency } = AUDIO_CONFIG_BY_INSTRUMENT[instrumentRef.current];
     if (frequency < minFrequency || frequency > maxFrequency || clarity < MIN_CLARITY) {
       setDetectedNote(null);
