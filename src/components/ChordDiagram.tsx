@@ -1,26 +1,31 @@
 import { memo } from 'react';
-import type { ChordVoicing } from '../theory/chords';
+import { CHORD_CHART_STRINGS, type ChordInstrument, type ChordVoicing } from '../theory/chords';
 
 interface ChordDiagramProps {
   voicing: ChordVoicing;
   label: string;
   size?: number;
+  instrument?: ChordInstrument;
 }
 
-const STRING_LABELS = ['G', 'C', 'E', 'A'];
 const NUM_FRETS_SHOWN = 4;
 
-function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
+function ChordDiagramInner({ voicing, label, size = 160, instrument = 'ukulele' }: ChordDiagramProps) {
   const { frets, fingers, barres } = voicing;
+  const stringLabels = CHORD_CHART_STRINGS[instrument];
+  const numStrings = stringLabels.length;
 
-  const minFret = Math.min(...frets.filter((f) => f > 0));
+  const frettedFrets = frets.filter((f) => f > 0);
+  const minFret = frettedFrets.length > 0 ? Math.min(...frettedFrets) : 1;
   const maxFret = Math.max(...frets);
   // If all frets fit within first 4, show from fret 1; otherwise offset
   const startFret = maxFret <= NUM_FRETS_SHOWN ? 1 : minFret;
 
-  const padding = { top: 40, bottom: 20, left: 24, right: 24 };
-  const stringSpacing = (size - padding.left - padding.right) / 3;
+  const hPad = Math.min(24, Math.max(14, size * 0.18));
+  const padding = { top: 40, bottom: 20, left: hPad, right: hPad };
+  const stringSpacing = (size - padding.left - padding.right) / (numStrings - 1);
   const fretSpacing = 28;
+  const dotRadius = Math.min(8, stringSpacing * 0.42);
   const svgHeight = padding.top + NUM_FRETS_SHOWN * fretSpacing + padding.bottom;
   const svgWidth = size;
 
@@ -46,7 +51,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
         <line
           x1={padding.left - 2}
           y1={fretY(0)}
-          x2={padding.left + 3 * stringSpacing + 2}
+          x2={padding.left + (numStrings - 1) * stringSpacing + 2}
           y2={fretY(0)}
           stroke="currentColor"
           strokeWidth={4}
@@ -70,7 +75,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
           key={f}
           x1={padding.left}
           y1={fretY(f)}
-          x2={padding.left + 3 * stringSpacing}
+          x2={padding.left + (numStrings - 1) * stringSpacing}
           y2={fretY(f)}
           stroke="currentColor"
           strokeWidth={f === 0 && startFret === 1 ? 0 : 1}
@@ -79,7 +84,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
       ))}
 
       {/* Strings */}
-      {Array.from({ length: 4 }, (_, s) => (
+      {Array.from({ length: numStrings }, (_, s) => (
         <line
           key={s}
           x1={stringX(s)}
@@ -125,7 +130,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
               key={s}
               cx={stringX(s)}
               cy={fretY(0) - 10}
-              r={5}
+              r={Math.min(5, stringSpacing * 0.3)}
               fill="none"
               stroke="currentColor"
               strokeWidth={1.5}
@@ -164,7 +169,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
               <circle
                 cx={stringX(s)}
                 cy={cy}
-                r={8}
+                r={dotRadius}
                 fill="currentColor"
                 opacity={0.9}
               />
@@ -175,7 +180,7 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
                 y={cy + 1}
                 textAnchor="middle"
                 dominantBaseline="central"
-                fontSize={9}
+                fontSize={dotRadius + 1}
                 fontWeight={700}
                 fill="var(--color-surface, #1e1b2e)"
               >
@@ -187,9 +192,9 @@ function ChordDiagramInner({ voicing, label, size = 160 }: ChordDiagramProps) {
       })}
 
       {/* String labels */}
-      {STRING_LABELS.map((lbl, s) => (
+      {stringLabels.map((lbl, s) => (
         <text
-          key={lbl}
+          key={s}
           x={stringX(s)}
           y={fretY(NUM_FRETS_SHOWN) + 14}
           textAnchor="middle"

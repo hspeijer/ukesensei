@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { ChordDiagram } from './ChordDiagram';
-import { CHORD_QUALITIES, findVoicing } from '../theory/chords';
+import { CHORD_QUALITIES, findVoicing, type ChordInstrument } from '../theory/chords';
 import { displayNote, type NoteName } from '../theory/notes';
 
 export interface ChordRowChord {
@@ -11,6 +11,7 @@ export interface ChordRowChord {
 
 interface ChordRowProps {
   chords: Array<ChordRowChord | null>;
+  instrument?: ChordInstrument;
   className?: string;
 }
 
@@ -26,7 +27,7 @@ function dedupeChordChanges(chords: Array<ChordRowChord | null>): ChordRowChord[
   return changes;
 }
 
-function ChordRowInner({ chords, className = '' }: ChordRowProps) {
+function ChordRowInner({ chords, instrument = 'ukulele', className = '' }: ChordRowProps) {
   const changes = useMemo(() => dedupeChordChanges(chords), [chords]);
 
   if (changes.length === 0) return null;
@@ -39,8 +40,8 @@ function ChordRowInner({ chords, className = '' }: ChordRowProps) {
         // drawn from CHROMATIC_NOTES), but several ukulele voicings below
         // are keyed by their flat name instead (Bb, Eb, Ab, Db, Gb) — try
         // both spellings so those chords still resolve to a diagram.
-        const voicing = findVoicing(chord.root, suffix)
-          ?? findVoicing(displayNote(chord.root as NoteName, true), suffix);
+        const voicing = findVoicing(chord.root, suffix, instrument)
+          ?? findVoicing(displayNote(chord.root as NoteName, true), suffix, instrument);
         if (!voicing) {
           return (
             <div
@@ -53,7 +54,12 @@ function ChordRowInner({ chords, className = '' }: ChordRowProps) {
         }
         return (
           <div key={`${chord.display}-${i}`} className="shrink-0">
-            <ChordDiagram voicing={voicing} label={chord.display} size={120} />
+            <ChordDiagram
+              voicing={voicing}
+              label={chord.display}
+              size={instrument === 'guitar' ? 140 : 120}
+              instrument={instrument}
+            />
           </div>
         );
       })}

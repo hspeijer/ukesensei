@@ -1,12 +1,14 @@
 import type { DetectedChord } from '../audio/useChordDetection';
+import type { ChordInstrument } from '../theory/chords';
 import { ChordDiagram } from './ChordDiagram';
 
 interface ChordDisplayProps {
   chord: DetectedChord | null;
   compact?: boolean;
+  instrument?: ChordInstrument;
 }
 
-export function ChordDisplay({ chord, compact = false }: ChordDisplayProps) {
+export function ChordDisplay({ chord, compact = false, instrument = 'ukulele' }: ChordDisplayProps) {
   if (compact) {
     return (
       <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3 flex items-center gap-3 text-[var(--c-text)]">
@@ -15,6 +17,7 @@ export function ChordDisplay({ chord, compact = false }: ChordDisplayProps) {
             voicing={chord.voicing}
             label={chord.display}
             size={72}
+            instrument={instrument}
           />
         ) : (
           <div className="text-2xl text-[var(--c-border)] shrink-0">&#9835;</div>
@@ -48,6 +51,7 @@ export function ChordDisplay({ chord, compact = false }: ChordDisplayProps) {
               voicing={chord.voicing}
               label={chord.display}
               size={170}
+              instrument={instrument}
             />
           ) : (
             <div className="text-center">

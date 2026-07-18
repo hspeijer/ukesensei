@@ -27,8 +27,8 @@ interface SheetMusicViewProps {
  * The single "sheet music" block used everywhere a recorded melody is shown
  * (recording preview, library playback, shared links). Wraps the treble
  * staff and tab renderers behind a Staff/Tab toggle (string instruments
- * only) and, for ukulele, a row of chord diagrams above the score — one per
- * chord change, since that's the only instrument with a voicing database.
+ * only) and, for ukulele and guitar, a row of chord diagrams above the
+ * score — one per chord change — drawn from their voicing databases.
  */
 export function SheetMusicView({
   notes,
@@ -49,7 +49,7 @@ export function SheetMusicView({
 
   const tuning = isStringInstrument(instrument) ? findTuningByKey(tuningKey) : null;
   const showToggle = tuning !== null;
-  const showChordRow = instrument === 'ukulele';
+  const chordInstrument = instrument === 'ukulele' || instrument === 'guitar' ? instrument : null;
   const mode: ViewMode = showToggle ? viewMode : 'staff';
 
   return (
@@ -101,7 +101,7 @@ export function SheetMusicView({
         )}
       </div>
 
-      {showChordRow && <ChordRow chords={chordLabels} className="mb-2" />}
+      {chordInstrument && <ChordRow chords={chordLabels} instrument={chordInstrument} className="mb-2" />}
 
       {mode === 'tab' && tuning ? (
         <TabScore

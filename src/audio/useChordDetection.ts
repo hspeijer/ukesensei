@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import type { DetectedNote } from '../store/useAppStore';
 import type { NoteName } from '../theory/notes';
-import { detectChord, findVoicing, type ChordVoicing } from '../theory/chords';
+import { CHORD_QUALITIES, detectChord, findVoicing, type ChordInstrument, type ChordVoicing } from '../theory/chords';
 
 const CHORD_WINDOW_MS = 800;
 const CHORD_MIN_UNIQUE_NOTES = 3;
@@ -19,7 +19,10 @@ export interface DetectedChord {
   timestamp: number;
 }
 
-export function useChordDetection(detectedNote: DetectedNote | null): DetectedChord | null {
+export function useChordDetection(
+  detectedNote: DetectedNote | null,
+  instrument: ChordInstrument = 'ukulele',
+): DetectedChord | null {
   const noteHistoryRef = useRef<{ note: NoteName; timestamp: number }[]>([]);
   const lastUpdateRef = useRef(0);
   const [chord, setChord] = useState<DetectedChord | null>(null);
@@ -67,10 +70,10 @@ export function useChordDetection(detectedNote: DetectedNote | null): DetectedCh
     }
     if (filteredNotes.length < CHORD_MIN_UNIQUE_NOTES) return;
 
-    const detected = detectChord(filteredNotes, noteCounts);
+    const detected = detectChord(filteredNotes, noteCounts, instrument);
     if (detected) {
       const qualitySuffix = getQualitySuffix(detected.quality);
-      const voicing = findVoicing(detected.root, qualitySuffix);
+      const voicing = findVoicing(detected.root, qualitySuffix, instrument);
       setChord({
         root: detected.root,
         quality: detected.quality,
@@ -79,25 +82,11 @@ export function useChordDetection(detectedNote: DetectedNote | null): DetectedCh
         timestamp: now,
       });
     }
-  }, [detectedNote]);
+  }, [detectedNote, instrument]);
 
   return chord;
 }
 
 function getQualitySuffix(quality: string): string {
-  const map: Record<string, string> = {
-    major: '',
-    minor: 'm',
-    dom7: '7',
-    maj7: 'maj7',
-    min7: 'm7',
-    dim: 'dim',
-    aug: 'aug',
-    sus2: 'sus2',
-    sus4: 'sus4',
-    add9: 'add9',
-    min6: 'm6',
-    dom6: '6',
-  };
-  return map[quality] ?? '';
+  return CHORD_QUALITIES[quality]?.suffix ?? '';
 }

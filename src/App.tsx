@@ -20,6 +20,7 @@ import { FeedbackPanel } from './components/FeedbackPanel';
 import { Metronome } from './components/Metronome';
 import { SessionLibrary } from './components/SessionLibrary';
 import { SessionPlayback } from './components/SessionPlayback';
+import { StemAnalysis } from './components/StemAnalysis';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminSignIn } from './components/AdminSignIn';
 import { LessonPath } from './components/LessonPath';
@@ -124,8 +125,9 @@ export default function App() {
   const recorder = useAudioRecorder();
   const { exercise, begin, beginCustom } = useExercise({ getNearestBeatOffset: metronome.getNearestBeatOffset });
   const { rhythmExercise, beginCustom: beginCustomRhythm } = useRhythmExercise();
-  // Chord detection/display only makes sense for chorded instruments like the ukulele.
-  const detectedChord = useChordDetection(instrument === 'ukulele' ? detectedNote : null);
+  // Chord detection/display only makes sense for chorded instruments with a voicing database.
+  const chordInstrument = instrument === 'ukulele' || instrument === 'guitar' ? instrument : null;
+  const detectedChord = useChordDetection(chordInstrument ? detectedNote : null, chordInstrument ?? 'ukulele');
 
   const [sessionResult, setSessionResult] = useState<SessionResult | null>(null);
 
@@ -604,10 +606,10 @@ export default function App() {
   const activeScale = exercise ? exercise.scaleKey : selectedScale;
 
   const chordPositionIds = useMemo(() => {
-    if (!detectedChord?.voicing) return new Set<string>();
-    const positions = getVoicingFretPositions(detectedChord.voicing);
+    if (!detectedChord?.voicing || !chordInstrument) return new Set<string>();
+    const positions = getVoicingFretPositions(detectedChord.voicing, chordInstrument);
     return new Set(positions.map((p) => `s${p.string}f${p.fret}`));
-  }, [detectedChord]);
+  }, [detectedChord, chordInstrument]);
 
   const checkpointGate = useMemo(() => {
     if (!exercise?.isComplete || !exercise.lessonId || exercise.requiredAccuracy == null) {
@@ -670,6 +672,20 @@ export default function App() {
         lessonsAvailable={!!curriculum}
         exercisesAvailable={instrument !== 'clarinet'}>
         <SessionPlayback sessionId={selectedSessionId} onBack={handleBackToLibrary} />
+      </Layout>
+    );
+  }
+
+  if (view === 'stems') {
+    return (
+      <Layout view={view} onViewChange={setView} instrument={instrument} onInstrumentChange={setInstrument}
+        tuningKey={tuningKey} onTuningChange={setTuning}
+        tuningAutoDetected={tuningAutoDetected}
+        handpanLayoutKey={handpanLayoutKey} onHandpanLayoutChange={setHandpanLayoutKey}
+        theme={theme} onToggleTheme={toggleTheme} onOpenTour={openTour}
+        lessonsAvailable={!!curriculum}
+        exercisesAvailable={instrument !== 'clarinet'}>
+        <StemAnalysis />
       </Layout>
     );
   }
@@ -887,13 +903,13 @@ export default function App() {
                 fretless={instrument === 'cello'}
               />
             </div>
-            {instrument === 'ukulele' && (
+            {chordInstrument && (
               <>
                 <div className="shrink-0 hidden lg:block order-2">
-                  <ChordDisplay chord={detectedChord} />
+                  <ChordDisplay chord={detectedChord} instrument={chordInstrument} />
                 </div>
                 <div className="lg:hidden order-2">
-                  <ChordDisplay chord={detectedChord} compact />
+                  <ChordDisplay chord={detectedChord} compact instrument={chordInstrument} />
                 </div>
               </>
             )}
