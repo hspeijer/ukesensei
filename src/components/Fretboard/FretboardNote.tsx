@@ -25,9 +25,17 @@ function FretboardNoteInner({
   isChordTone,
   onClick,
 }: FretboardNoteProps) {
-  if (!isScaleTone && !isDetected && !isChordTone) return null;
-
+  // Hooks must run unconditionally on every render (Rules of Hooks) --
+  // declare them before the early return below, even though they're only
+  // meaningful when this note actually renders.
   const [hovered, setHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setHovered(true), []);
+  const handlePointerLeave = useCallback(() => setHovered(false), []);
+
+  // Note: intentionally omits `isTarget` -- Fretboard.tsx's own filter (which
+  // decides whether to render this component at all) includes isTarget, so
+  // this check only matters for defense-in-depth and should stay a superset.
+  if (!isScaleTone && !isDetected && !isTarget && !isChordTone) return null;
 
   let fill = 'var(--c-fb-note-bg)';
   let stroke = 'none';
@@ -71,9 +79,6 @@ function FretboardNoteInner({
 
   const clickable = !!onClick;
   const displayRadius = hovered && clickable ? radius + 2 : radius;
-
-  const handlePointerEnter = useCallback(() => setHovered(true), []);
-  const handlePointerLeave = useCallback(() => setHovered(false), []);
 
   return (
     <g

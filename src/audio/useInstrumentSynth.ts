@@ -26,27 +26,46 @@ export function isPitchedSynth(
  *
  * Returns a synth object with either `playNote` (pitched instruments) or
  * `playHit` (rhythm instruments like cajon).
+ *
+ * IMPORTANT: every instrument's synth hook is called unconditionally, on every
+ * render, regardless of which instrument is currently selected. Hooks must run
+ * in the same order and count on every render (Rules of Hooks) -- individual
+ * synth hooks don't all call the same number of underlying hooks internally
+ * (e.g. clarinet/harmonica keep an extra `useRef` for a cached waveform), so
+ * calling only the "active" one via a switch would change the total hook
+ * count on the caller's fiber whenever the user switches instruments, which
+ * corrupts React's hook bookkeeping for everything rendered after this call.
  */
 export function useInstrumentSynth(instrument: Instrument = 'ukulele') {
+  const ukulele = useUkeSynth();
+  const bass = useBassSynth();
+  const guitar = useGuitarSynth();
+  const cello = useCelloSynth();
+  const clarinet = useClarinetSynth();
+  const voice = useVoiceSynth();
+  const handpan = useHandpanSynth();
+  const cajon = useCajonSynth();
+  const harmonica = useHarmonicaSynth();
+
   switch (instrument) {
     case 'ukulele':
-      return useUkeSynth();
+      return ukulele;
     case 'bass':
-      return useBassSynth();
+      return bass;
     case 'guitar':
-      return useGuitarSynth();
+      return guitar;
     case 'cello':
-      return useCelloSynth();
+      return cello;
     case 'clarinet':
-      return useClarinetSynth();
+      return clarinet;
     case 'voice':
-      return useVoiceSynth();
+      return voice;
     case 'handpan':
-      return useHandpanSynth();
+      return handpan;
     case 'cajon':
-      return useCajonSynth();
+      return cajon;
     case 'harmonica':
-      return useHarmonicaSynth();
+      return harmonica;
     default:
       // TypeScript exhaustiveness check
       const _exhaustive: never = instrument;
