@@ -884,6 +884,7 @@ export default function App() {
                 playedPositionIds={playedIds}
                 chordPositionIds={chordPositionIds}
                 onNoteClick={previewNote}
+                fretless={instrument === 'cello'}
               />
             </div>
             {instrument === 'ukulele' && (

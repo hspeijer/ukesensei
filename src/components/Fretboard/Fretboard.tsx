@@ -23,6 +23,13 @@ interface FretboardProps {
   playedPositionIds?: Set<string>;
   chordPositionIds?: Set<string>;
   onNoteClick?: (note: NoteName, octave: number) => void;
+  /**
+   * Cello (and any other fretless instrument reusing this board) has no
+   * frets to show — pitch comes purely from finger placement by ear. When
+   * true, this hides fret wires/numbers/inlay dots and renders a smooth,
+   * unmarked fingerboard instead, with only a faint octave guide.
+   */
+  fretless?: boolean;
 }
 
 const PADDING = { top: 40, bottom: 30, left: 55, right: 20 };
@@ -40,6 +47,7 @@ export function Fretboard({
   playedPositionIds,
   chordPositionIds,
   onNoteClick,
+  fretless = false,
 }: FretboardProps) {
   const fretboard = useMemo(() => generateFretboard(tuning), [tuning]);
   const scaleNotes = useMemo(() => getScaleNotes(root, scaleKey), [root, scaleKey]);
@@ -59,10 +67,13 @@ export function Fretboard({
   const fretWidths = useMemo(() => {
     const widths: number[] = [];
     for (let f = 1; f <= NUM_FRETS; f++) {
-      widths.push(Math.max(MIN_FRET_WIDTH, 80 - f * 1.5));
+      // Real frets get closer together at higher positions; a fretless
+      // fingerboard has no such physical constraint, so space positions
+      // evenly to avoid implying discrete, unevenly-sized frets.
+      widths.push(fretless ? MIN_FRET_WIDTH : Math.max(MIN_FRET_WIDTH, 80 - f * 1.5));
     }
     return widths;
-  }, []);
+  }, [fretless]);
 
   const totalFretWidth = fretWidths.reduce((a, b) => a + b, 0);
   const boardWidth = PADDING.left + totalFretWidth + PADDING.right;
@@ -111,8 +122,8 @@ export function Fretboard({
           fill="var(--c-fb-bg)"
         />
 
-        {/* Fret markers (dots) */}
-        <FretMarkers fretX={fretX} stringY={stringY} numStrings={numStrings} />
+        {/* Fret markers (dots) -- a fretless board only gets a faint octave guide */}
+        <FretMarkers fretX={fretX} stringY={stringY} numStrings={numStrings} fretless={fretless} />
 
         {/* Nut */}
         <line
@@ -125,8 +136,8 @@ export function Fretboard({
           strokeLinecap="round"
         />
 
-        {/* Fret wires */}
-        {fretXPositions.slice(1).map((x, i) => (
+        {/* Fret wires -- omitted on a fretless board, which has a smooth, unmarked neck */}
+        {!fretless && fretXPositions.slice(1).map((x, i) => (
           <line
             key={i}
             x1={x}
@@ -170,8 +181,8 @@ export function Fretboard({
           </text>
         ))}
 
-        {/* Fret numbers */}
-        {Array.from({ length: NUM_FRETS }, (_, f) => {
+        {/* Fret numbers -- meaningless on a fretless board, so omitted */}
+        {!fretless && Array.from({ length: NUM_FRETS }, (_, f) => {
           const cx = (fretX(f) + fretX(f + 1)) / 2;
           return (
             <text
