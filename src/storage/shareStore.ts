@@ -101,6 +101,7 @@ export async function getSharedSession(token: string): Promise<SharedSessionResu
     analysisStatus: 'none',
     hasAudio: !!s.hasAudio,
     notes: (s.notes as SessionDetail['notes']) ?? [],
+    chords: (s.chords as SessionDetail['chords']) ?? null,
     startedAt: s.startedAt as number,
     endedAt: s.endedAt as number,
   };

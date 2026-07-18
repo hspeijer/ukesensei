@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Instrument, TuningKey } from '../store/useAppStore';
-import type { MelodyNote } from '../theory/staff';
+import { findActiveMelodyNoteIndex, quantizeMelody, type MelodyNote } from '../theory/staff';
+import { findTuningByKey, isStringInstrument } from '../theory/fretboard';
+import { inferSongChords } from '../theory/harmony';
 import { useAudioRecorder } from '../audio/useAudioRecorder';
+import { useAudioClock } from '../audio/useAudioClock';
 import { transcribeAudioBlob } from '../audio/transcribeAudio';
 import { SheetMusicScore } from './SheetMusicScore';
+import { Fretboard } from './Fretboard/Fretboard';
 import { uploadSession } from '../api/sessionApi';
 
 interface SongRecorderProps {
@@ -64,6 +68,10 @@ export function SongRecorder({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [sessionTimes, setSessionTimes] = useState<{ start: number; end: number } | null>(null);
   const startedAtRef = useRef<number | null>(null);
+  const {
+    audioRef, currentTime, duration, isPlaying, toggle: togglePlayback, seek: seekTo,
+    reset: resetClock, handleLoadedMetadata, handleEnded,
+  } = useAudioClock();
 
   // Recording always captures the full take first; pitch/note detection only
   // ever runs afterward on the finished audio, so a slow or missed live
@@ -83,6 +91,7 @@ export function SongRecorder({
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audio.clearRecording();
+    resetClock();
     setElapsedMs(0);
 
     if (!isListening) await onEnsureListening();
@@ -95,7 +104,7 @@ export function SongRecorder({
     setSessionTimes({ start: startedAt, end: startedAt });
     audio.startRecording(stream);
     setRecording(true);
-  }, [audio, audioUrl, getStream, isListening, onEnsureListening]);
+  }, [audio, audioUrl, resetClock, getStream, isListening, onEnsureListening]);
 
   const handleStop = useCallback(async () => {
     setRecording(false);
@@ -126,13 +135,22 @@ export function SongRecorder({
   const handleDiscard = useCallback(() => {
     setRecording(false);
     audio.clearRecording();
+    resetClock();
     setFinishedNotes(null);
     setRecordedBlob(null);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     setSaveMessage(null);
     setSessionTimes(null);
-  }, [audio, audioUrl]);
+  }, [audio, audioUrl, resetClock]);
+
+  // Computed once here (rather than left for SheetMusicScore to infer on its
+  // own) so the exact same chords shown in the preview are what gets saved.
+  const { measures } = useMemo(() => quantizeMelody(finishedNotes ?? []), [finishedNotes]);
+  const chordLabels = useMemo(
+    () => inferSongChords(finishedNotes ?? [], measures),
+    [finishedNotes, measures],
+  );
 
   const handleSave = useCallback(async () => {
     if (!sessionTimes) return;
@@ -152,6 +170,7 @@ export function SongRecorder({
         timingOnTimePercent: 1,
         overallScore: 1,
         notes: melodyToSessionNotes(notes, sessionTimes.start),
+        chords: chordLabels,
       });
       setSaveMessage(local ? 'Saved to library (on this device)' : 'Saved to your library');
     } catch {
@@ -159,7 +178,20 @@ export function SongRecorder({
     } finally {
       setSaving(false);
     }
-  }, [finishedNotes, recordedBlob, sessionTimes, tuningKey]);
+  }, [finishedNotes, recordedBlob, sessionTimes, tuningKey, chordLabels]);
+
+  const handleSeekBar = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    seekTo(fraction * duration);
+  }, [duration, seekTo]);
+
+  const activeNoteIndex = audioUrl
+    ? findActiveMelodyNoteIndex(finishedNotes ?? [], currentTime * 1000)
+    : -1;
+  const activeMelodyNote = activeNoteIndex >= 0 ? (finishedNotes ?? [])[activeNoteIndex] : null;
+  const tuning = isStringInstrument(instrument) ? findTuningByKey(tuningKey) : null;
 
   return (
     <div className="space-y-4">
@@ -227,14 +259,65 @@ export function SongRecorder({
       )}
 
       {audioUrl && !recording && (
-        <audio controls src={audioUrl} className="w-full max-w-md" />
+        <div className="flex items-center gap-3 px-3 py-2 bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] max-w-md">
+          <audio
+            ref={audioRef}
+            src={audioUrl}
+            preload="metadata"
+            onLoadedMetadata={handleLoadedMetadata}
+            onEnded={handleEnded}
+          />
+          <button
+            onClick={togglePlayback}
+            className="w-7 h-7 rounded-full flex items-center justify-center bg-teal-600 hover:bg-teal-500 text-white transition shrink-0"
+          >
+            {isPlaying ? (
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor">
+                <rect x="2" y="1" width="3.5" height="12" rx="1" />
+                <rect x="8.5" y="1" width="3.5" height="12" rx="1" />
+              </svg>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 14 14" fill="currentColor">
+                <polygon points="3,0 14,7 3,14" />
+              </svg>
+            )}
+          </button>
+          <div className="flex-1 cursor-pointer" onClick={handleSeekBar}>
+            <div className="h-1.5 bg-[var(--c-bg)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-teal-500 rounded-full transition-[width] duration-75"
+                style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+              />
+            </div>
+          </div>
+          <span className="text-[10px] font-mono text-[var(--c-text-muted)] tabular-nums shrink-0">
+            {formatDuration(currentTime * 1000)} / {formatDuration(duration * 1000)}
+          </span>
+        </div>
       )}
 
       {!recording && (finishedNotes || transcribing) && (
         <SheetMusicScore
           notes={finishedNotes ?? []}
           title={transcribing ? 'Detecting notes…' : 'Sheet music'}
+          activeNoteIndex={activeNoteIndex}
+          chords={chordLabels}
         />
+      )}
+
+      {!recording && tuning && finishedNotes && finishedNotes.length > 0 && (
+        <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3">
+          <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
+            Fretboard
+          </div>
+          <Fretboard
+            tuning={tuning}
+            root={activeMelodyNote?.note ?? 'C'}
+            scaleKey="major"
+            showScale={false}
+            detectedNote={activeMelodyNote}
+          />
+        </div>
       )}
     </div>
   );

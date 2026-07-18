@@ -9,6 +9,7 @@ export interface SessionMetadata {
   timingOnTimePercent: number;
   overallScore: number;
   notes: SessionNoteData[];
+  chords?: (ChordLabelData | null)[] | null;
 }
 
 export interface SessionNoteData {
@@ -20,6 +21,12 @@ export interface SessionNoteData {
   beatOffset: number;
   expectedNote: string | null;
   wasCorrect: boolean;
+}
+
+export interface ChordLabelData {
+  root: string;
+  quality: string;
+  display: string;
 }
 
 export interface SessionRow {
@@ -36,6 +43,7 @@ export interface SessionRow {
   timing_on_time_percent: number;
   overall_score: number;
   notes_json: string;
+  chords_json: string | null;
   analysis_status: 'pending' | 'processing' | 'complete' | 'error';
   has_audio: number;
 }
@@ -57,6 +65,7 @@ export interface SessionSummary {
 
 export interface SessionDetail extends SessionSummary {
   notes: SessionNoteData[];
+  chords?: (ChordLabelData | null)[] | null;
   startedAt: number;
   endedAt: number;
 }

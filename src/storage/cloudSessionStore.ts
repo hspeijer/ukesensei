@@ -59,6 +59,7 @@ export async function saveCloudSession(
       timing_on_time_percent: metadata.timingOnTimePercent,
       overall_score: metadata.overallScore,
       notes_json: metadata.notes,
+      chords_json: metadata.chords ?? null,
       has_audio: hasAudio,
     })
     .select('id')
@@ -126,6 +127,7 @@ export async function getCloudSession(id: string): Promise<SessionDetail | null>
   return {
     ...summary,
     notes: data.notes_json ?? [],
+    chords: data.chords_json ?? null,
     startedAt: data.started_at,
     endedAt: data.ended_at,
   };

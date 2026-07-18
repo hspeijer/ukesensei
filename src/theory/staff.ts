@@ -156,10 +156,17 @@ function easyScoreToken(pitch: string | null, duration: string, dots: number): s
   return pitch === null ? `B4/${duration}/r${dotStr}` : `${pitch}/${duration}${dotStr}`;
 }
 
+export interface MeasureToken {
+  /** EasyScore token, e.g. "c4/q" or a rest like "B4/q/r". */
+  token: string;
+  /** Index into the original (unquantized) `notes` array this token was derived from, or null for a rest. */
+  noteIndex: number | null;
+}
+
 export interface QuantizedMelody {
   bpm: number;
-  /** EasyScore tokens for each 4/4 measure, gaps between notes filled with rests. */
-  measures: string[][];
+  /** Tokens for each 4/4 measure, gaps between notes filled with rests. */
+  measures: MeasureToken[][];
 }
 
 // A note's detected sustain can end up a bit short of the next note's onset
@@ -187,13 +194,13 @@ export function quantizeMelody(notes: MelodyNote[], bpm: number = estimateBpm(no
   // sustain falls well short of that gap, the player likely left a real
   // pause, so only the sustain becomes the note and the rest of the gap
   // becomes a rest.
-  const events: Array<{ pitch: string | null; ticks: number }> = [];
+  const events: Array<{ pitch: string | null; ticks: number; noteIndex: number | null }> = [];
   for (let i = 0; i < notes.length; i++) {
     const pitch = noteToEasyScorePitch(notes[i].note, notes[i].octave);
     const durationTicks = Math.max(1, Math.round(notes[i].durationMs / gridMs));
 
     if (i === notes.length - 1) {
-      events.push({ pitch, ticks: Math.min(durationTicks, TICKS_PER_MEASURE) });
+      events.push({ pitch, ticks: Math.min(durationTicks, TICKS_PER_MEASURE), noteIndex: i });
       continue;
     }
 
@@ -202,18 +209,18 @@ export function quantizeMelody(notes: MelodyNote[], bpm: number = estimateBpm(no
 
     const legato = durationTicks >= gapTicks - REST_SLACK_TICKS;
     const noteTicks = Math.min(legato ? gapTicks : durationTicks, gapTicks);
-    events.push({ pitch, ticks: noteTicks });
-    if (gapTicks > noteTicks) events.push({ pitch: null, ticks: gapTicks - noteTicks });
+    events.push({ pitch, ticks: noteTicks, noteIndex: i });
+    if (gapTicks > noteTicks) events.push({ pitch: null, ticks: gapTicks - noteTicks, noteIndex: null });
   }
 
-  const measures: string[][] = [[]];
+  const measures: MeasureToken[][] = [[]];
   let measurePos = 0;
-  const emit = (pitch: string | null, ticksLeft: number) => {
+  const emit = (pitch: string | null, ticksLeft: number, noteIndex: number | null) => {
     let remaining = ticksLeft;
     while (remaining > 0) {
       const chunk = Math.min(remaining, TICKS_PER_MEASURE - measurePos);
       for (const { duration, dots } of decomposeTicks(chunk)) {
-        measures[measures.length - 1].push(easyScoreToken(pitch, duration, dots));
+        measures[measures.length - 1].push({ token: easyScoreToken(pitch, duration, dots), noteIndex });
       }
       measurePos += chunk;
       remaining -= chunk;
@@ -223,28 +230,39 @@ export function quantizeMelody(notes: MelodyNote[], bpm: number = estimateBpm(no
       }
     }
   };
-  for (const event of events) emit(event.pitch, event.ticks);
-  if (measurePos > 0) emit(null, TICKS_PER_MEASURE - measurePos);
+  for (const event of events) emit(event.pitch, event.ticks, event.noteIndex);
+  if (measurePos > 0) emit(null, TICKS_PER_MEASURE - measurePos, null);
   if (measures[measures.length - 1].length === 0) measures.pop();
 
   return { bpm, measures };
 }
 
 export interface ScoreLine {
-  /** Comma-separated EasyScore string for this line's measures. */
-  tokens: string;
-  /** Total beats spanned by this line, for the VexFlow voice's time signature. */
-  beats: number;
+  /** Measures in this line, each an array of tokens, kept separate so each renders on its own stave with its own bar line. */
+  measures: MeasureToken[][];
 }
 
 /** Group quantized measures into score lines a few bars at a time. */
-export function chunkMeasuresIntoLines(measures: string[][], measuresPerLine = 2): ScoreLine[] {
+export function chunkMeasuresIntoLines(measures: MeasureToken[][], measuresPerLine = 2): ScoreLine[] {
   const lines: ScoreLine[] = [];
   for (let i = 0; i < measures.length; i += measuresPerLine) {
-    const group = measures.slice(i, i + measuresPerLine);
-    lines.push({ tokens: group.map((m) => m.join(', ')).join(', '), beats: group.length * 4 });
+    lines.push({ measures: measures.slice(i, i + measuresPerLine) });
   }
   return lines;
+}
+
+/**
+ * Find the index of the melody note whose [startMs, startMs + durationMs)
+ * window contains the given playback time, so playback UIs (sheet music
+ * cursor, fretboard highlight) can highlight whichever note is "currently
+ * playing" at a given moment.
+ */
+export function findActiveMelodyNoteIndex(notes: MelodyNote[], timeMs: number): number {
+  for (let i = 0; i < notes.length; i++) {
+    const note = notes[i];
+    if (timeMs >= note.startMs && timeMs < note.startMs + note.durationMs) return i;
+  }
+  return -1;
 }
 
 /** Convert session note timestamps into melody segments with durations. */

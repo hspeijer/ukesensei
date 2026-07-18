@@ -37,6 +37,8 @@ export interface SessionDetail extends SessionSummary {
   notes: SessionNoteData[];
   startedAt: number;
   endedAt: number;
+  /** One inferred chord per measure of the melody, lead-sheet style (null entries are rest-only measures); null/omitted for sessions saved before this existed. */
+  chords?: (ChordLabelData | null)[] | null;
 }
 
 export interface SessionNoteData {
@@ -48,6 +50,12 @@ export interface SessionNoteData {
   beatOffset: number;
   expectedNote: string | null;
   wasCorrect: boolean;
+}
+
+export interface ChordLabelData {
+  root: string;
+  quality: string;
+  display: string;
 }
 
 export interface StringAnalysisFrame {
@@ -88,6 +96,7 @@ export interface UploadMetadata {
   timingOnTimePercent: number;
   overallScore: number;
   notes: SessionNoteData[];
+  chords?: (ChordLabelData | null)[] | null;
 }
 
 async function getCurrentUserId(): Promise<string | null> {

@@ -33,10 +33,16 @@ function initSchema(db: Database.Database) {
       timing_on_time_percent REAL NOT NULL DEFAULT 0,
       overall_score REAL NOT NULL DEFAULT 0,
       notes_json TEXT NOT NULL DEFAULT '[]',
+      chords_json TEXT,
       analysis_status TEXT NOT NULL DEFAULT 'pending',
       has_audio INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_sessions_created ON sessions(created_at DESC);
   `);
+
+  const columns = db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[];
+  if (!columns.some((c) => c.name === 'chords_json')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN chords_json TEXT');
+  }
 }

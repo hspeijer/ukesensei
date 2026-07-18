@@ -13,11 +13,13 @@ import { StringWaveform } from './StringWaveform';
 import { PlaybackFftVisualizer } from './PlaybackFftVisualizer';
 import { SheetMusicScore } from './SheetMusicScore';
 import { ShareModal } from './ShareModal';
-import { sessionNotesToMelody } from '../theory/staff';
+import { Fretboard } from './Fretboard/Fretboard';
+import { findActiveMelodyNoteIndex, sessionNotesToMelody } from '../theory/staff';
 import { SCALE_DEFINITIONS } from '../theory/scales';
 import { findTuningByKey } from '../theory/fretboard';
 import { isCloudSessionId } from '../storage/cloudSessionStore';
 import { useAuth } from '../auth/AuthProvider';
+import { useAudioClock } from '../audio/useAudioClock';
 
 interface SessionPlaybackProps {
   sessionId: string;
@@ -30,16 +32,15 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
   const [resolvedAudioUrl, setResolvedAudioUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const { user } = useAuth();
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const animFrameRef = useRef<number>(0);
+  const {
+    audioRef, currentTime, duration, isPlaying, toggle: handlePlayPause, seek: seekTo,
+    handleLoadedMetadata, handleEnded,
+  } = useAudioClock();
   const containerRef = useRef<HTMLDivElement>(null);
   const [waveformWidth, setWaveformWidth] = useState(600);
 
@@ -116,45 +117,12 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
     }
   }, [sessionId]);
 
-  const updateTime = useCallback(() => {
-    const audio = audioRef.current;
-    if (audio && !audio.paused) {
-      setCurrentTime(audio.currentTime);
-      animFrameRef.current = requestAnimationFrame(updateTime);
-    }
-  }, []);
-
-  const handlePlayPause = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) {
-      audio.play();
-      setIsPlaying(true);
-      animFrameRef.current = requestAnimationFrame(updateTime);
-    } else {
-      audio.pause();
-      setIsPlaying(false);
-      cancelAnimationFrame(animFrameRef.current);
-    }
-  }, [updateTime]);
-
-  const seekTo = useCallback((time: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = time;
-    setCurrentTime(time);
-  }, []);
-
   const handleSeekBar = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     seekTo(fraction * duration);
   }, [duration, seekTo]);
-
-  useEffect(() => {
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, []);
 
   const melodyNotes = useMemo(
     () => session ? sessionNotesToMelody(session.notes, session.startedAt) : [],
@@ -188,6 +156,9 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
   const pitchColor = session.pitchAccuracy >= 80 ? '#34d399' : session.pitchAccuracy >= 50 ? '#fbbf24' : '#f87171';
   const timingColor = session.timingOnTimePercent >= 75 ? '#34d399' : session.timingOnTimePercent >= 40 ? '#fbbf24' : '#f87171';
   const scoreColor = session.overallScore >= 70 ? '#34d399' : session.overallScore >= 40 ? '#fbbf24' : '#f87171';
+  const activeNoteIndex = audioUrl ? findActiveMelodyNoteIndex(melodyNotes, currentTime * 1000) : -1;
+  const activeMelodyNote = activeNoteIndex >= 0 ? melodyNotes[activeNoteIndex] : null;
+  const tuning = findTuningByKey(session.tuningKey);
 
   return (
     <div className="space-y-3" ref={containerRef}>
@@ -260,16 +231,8 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
             ref={audioRef}
             src={audioUrl}
             preload="metadata"
-            onLoadedMetadata={() => {
-              if (audioRef.current) {
-                const d = audioRef.current.duration;
-                setDuration(isFinite(d) ? d : 0);
-              }
-            }}
-            onEnded={() => {
-              setIsPlaying(false);
-              cancelAnimationFrame(animFrameRef.current);
-            }}
+            onLoadedMetadata={handleLoadedMetadata}
+            onEnded={handleEnded}
           />
 
           {/* Transport bar */}
@@ -396,7 +359,28 @@ export function SessionPlayback({ sessionId, onBack }: SessionPlaybackProps) {
 
       {/* Sheet music */}
       {melodyNotes.length > 0 && (
-        <SheetMusicScore notes={melodyNotes} title="Sheet Music" />
+        <SheetMusicScore
+          notes={melodyNotes}
+          title="Sheet Music"
+          activeNoteIndex={activeNoteIndex}
+          chords={session.chords ?? undefined}
+        />
+      )}
+
+      {/* Fretboard, highlighting whichever note is playing right now */}
+      {audioUrl && tuning && (
+        <div className="bg-[var(--c-surface)] rounded-xl border border-[var(--c-border)] p-3">
+          <div className="text-[10px] text-[var(--c-text-muted)] font-medium uppercase tracking-wider mb-1 px-0.5">
+            Fretboard
+          </div>
+          <Fretboard
+            tuning={tuning}
+            root={activeMelodyNote?.note ?? 'C'}
+            scaleKey="major"
+            showScale={false}
+            detectedNote={activeMelodyNote}
+          />
+        </div>
       )}
 
       {/* Note timeline */}

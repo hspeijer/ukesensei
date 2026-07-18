@@ -28,6 +28,7 @@ function rowToDetail(row: SessionRow): SessionDetail {
   return {
     ...rowToSummary(row),
     notes: JSON.parse(row.notes_json),
+    chords: row.chords_json ? JSON.parse(row.chords_json) : null,
     startedAt: row.started_at,
     endedAt: row.ended_at,
   };
@@ -43,8 +44,8 @@ export function createSession(
 
   db.prepare(`
     INSERT INTO sessions (id, scale_key, root, bpm, tuning_key, started_at, ended_at,
-      duration_sec, pitch_accuracy, timing_on_time_percent, overall_score, notes_json, has_audio)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      duration_sec, pitch_accuracy, timing_on_time_percent, overall_score, notes_json, chords_json, has_audio)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     meta.scaleKey,
@@ -58,6 +59,7 @@ export function createSession(
     meta.timingOnTimePercent,
     meta.overallScore,
     JSON.stringify(meta.notes),
+    meta.chords ? JSON.stringify(meta.chords) : null,
     hasAudio ? 1 : 0,
   );
 }

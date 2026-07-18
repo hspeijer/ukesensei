@@ -105,6 +105,7 @@ export async function getLocalSession(id: string): Promise<SessionDetail | null>
   return {
     ...summary,
     notes: record.metadata.notes,
+    chords: record.metadata.chords ?? null,
     startedAt: record.metadata.startedAt,
     endedAt: record.metadata.endedAt,
   };

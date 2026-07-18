@@ -85,6 +85,12 @@ create table if not exists public.practice_sessions (
 alter table public.practice_sessions
   add column if not exists audio_provider text not null default 'supabase';
 
+-- One inferred chord per measure of the melody (lead-sheet style), computed
+-- once at save time. Null for sessions saved before this existed, or for
+-- non-melody (scale-practice) sessions.
+alter table public.practice_sessions
+  add column if not exists chords_json jsonb;
+
 alter table public.practice_sessions enable row level security;
 
 drop policy if exists "practice_sessions_all_own" on public.practice_sessions;
@@ -168,6 +174,7 @@ begin
       'timingOnTimePercent', ps.timing_on_time_percent,
       'overallScore', ps.overall_score,
       'notes', ps.notes_json,
+      'chords', ps.chords_json,
       'hasAudio', ps.has_audio,
       'audioPath', ps.audio_path,
       'audioProvider', ps.audio_provider
