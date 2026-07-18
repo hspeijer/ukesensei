@@ -1,11 +1,26 @@
 # Uke Sensei
 
-A browser-based ukulele practice companion that listens to your playing, detects notes and chords in real time, visualizes everything on an interactive fretboard, and guides you through scale exercises.
+A browser-based multi-instrument practice companion. It listens to you play (via mic), detects pitch/chords/rhythm in real time, and guides you through structured lessons and free-play exercises. Started as a ukulele-only tool; now also supports bass, guitar, clarinet, voice, handpan, and cajon.
+
+## Supported instruments
+
+- **String** (fretboard + chord diagrams): ukulele, bass, guitar
+- **Pitched, no fretboard**: clarinet, voice (with a continuous pitch/range ladder)
+- **Percussive, no stable pitch**: handpan (multi-scale), cajon (rhythm-only, detected via onset/spectral analysis rather than pitch)
 
 ## Features
 
 ### Real-time note detection
-Uses your microphone and the McLeod Pitch Method to detect what note you're playing with sub-cent accuracy. A live tuning meter shows how sharp or flat you are, and the detected note lights up on the fretboard instantly.
+Uses your microphone to detect what note you're playing with sub-cent accuracy, via a Rust/WASM audio engine (FFT-based) running in an AudioWorklet for low-latency analysis. A live tuning meter shows how sharp or flat you are, and the detected note lights up on the fretboard instantly. (An older `pitchy`-based hook, `usePitchDetection.ts`, still lives in the repo but is no longer wired into the app — the WASM path replaced it.)
+
+### Lessons and curricula
+Each instrument has its own structured curriculum (`src/lessons/`) of modules and lessons, each with instructional content, free-play practice drills, and a gating checkpoint exercise that must be passed at a required accuracy to unlock the next lesson. Checkpoints are pitch-based for melodic instruments and hit/timing-based for cajon.
+
+### Accounts, sharing, and history
+Sign-in/auth gating, an admin dashboard, a session library with playback, and shareable session links (`ShareModal` / `SharedSessionView`) so a practice session or recording can be sent to someone else.
+
+### Sheet music
+Live staff notation and melody transcription (via `vexflow`), including quantizing a recorded/transcribed melody to a tempo grid.
 
 ### Chord detection and diagrams
 When you strum a chord, Uke Sensei identifies it from the notes ringing within a short time window. The detected chord is displayed as a standard ukulele fretting diagram showing finger positions, open strings, and barres. Supports major, minor, 7th, maj7, min7, diminished, augmented, sus2, sus4, and more.
@@ -114,9 +129,11 @@ This compiles the Rust crate to WebAssembly and copies the output to `public/aud
 ```
 ukesensei/
 ├── src/                  # React frontend
-│   ├── audio/            # Microphone, pitch detection, chord detection hooks
-│   ├── components/       # UI components (fretboard, chord diagrams, etc.)
-│   ├── exercises/        # Exercise logic and session management
+│   ├── audio/            # Microphone, pitch/onset detection, chord detection hooks
+│   ├── auth/             # Sign-in / auth gating
+│   ├── components/       # UI components (fretboard, chord diagrams, lessons, admin, sharing, etc.)
+│   ├── exercises/        # Free-play exercise logic and session management
+│   ├── lessons/          # Per-instrument curricula (modules, lessons, checkpoints)
 │   ├── theory/           # Music theory (notes, scales, chords, fretboard mappings)
 │   └── store/            # Zustand state management
 ├── server/               # Express API server (session recording, analysis)
@@ -142,10 +159,11 @@ Strum any chord and the chord name and fretting diagram appear alongside the fre
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS
 - **State management**: Zustand
-- **Pitch detection**: [pitchy](https://github.com/ianprime0509/pitchy) (McLeod Pitch Method)
-- **Audio engine**: Rust compiled to WebAssembly (rustfft for FFT)
+- **Pitch/onset detection**: Rust compiled to WebAssembly (rustfft for FFT), running in an AudioWorklet. [pitchy](https://github.com/ianprime0509/pitchy) (McLeod Pitch Method) is present as a dependency but is dead code, not used in the live detection path.
+- **Auth/storage**: Supabase (auth, Postgres, session-audio storage), DigitalOcean Spaces (provisioned for larger recordings, not yet in the live upload path)
+- **Sheet music**: vexflow
 - **Server**: Express, better-sqlite3, multer
-- **Rendering**: Custom SVG for fretboard and chord diagrams
+- **Rendering**: Custom SVG for fretboard, chord, handpan, clarinet, and cajon diagrams
 
 ## Contributing
 
