@@ -48,7 +48,10 @@ function VoiceRangeLadderInner({ active, cents, onNoteClick, size = 150, opacity
   const markerColor = active ? centsColor(centsOff) : 'currentColor';
 
   return (
-    <div style={{ opacity }} className="flex flex-col items-center text-[var(--c-text)]">
+    <div
+      style={{ opacity, WebkitTouchCallout: 'none' }}
+      className="flex flex-col items-center text-[var(--c-text)] select-none"
+    >
       {active && (
         <div className="flex items-center gap-1.5 mb-1">
           <div className="text-lg font-bold text-[var(--c-accent)]">
@@ -60,7 +63,12 @@ function VoiceRangeLadderInner({ active, cents, onNoteClick, size = 150, opacity
           </span>
         </div>
       )}
-      <svg viewBox={`0 0 ${SVG_WIDTH} ${height}`} width={width} height={size}>
+      <svg
+        viewBox={`0 0 ${SVG_WIDTH} ${height}`}
+        width={width}
+        height={size}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+      >
         {rows.map((n, i) => {
           const isNatural = !n.note.includes('#');
           const isRowActive = !!active && active.note === n.note && active.octave === n.octave;

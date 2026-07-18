@@ -30,7 +30,7 @@ function HarmonicaDiagramInner({ active, onHoleClick, size = 260, opacity = 1 }:
   const height = SVG_HEIGHT * scale;
 
   return (
-    <div style={{ opacity }} className="flex flex-col items-center text-[var(--c-text)]">
+    <div style={{ opacity }} className="flex flex-col items-center text-[var(--c-text)] select-none">
       {active && (
         <div className="text-lg font-bold text-[var(--c-accent)] mb-1">
           {displayNote(active.note)}
@@ -40,7 +40,12 @@ function HarmonicaDiagramInner({ active, onHoleClick, size = 260, opacity = 1 }:
           </span>
         </div>
       )}
-      <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} width={size} height={height}>
+      <svg
+        viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+        width={size}
+        height={height}
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+      >
         <text x={PAD_X} y={SVG_HEIGHT - 3} fontSize={7} className="fill-current opacity-40" textAnchor="start">
           blow ↑ / draw ↓
         </text>

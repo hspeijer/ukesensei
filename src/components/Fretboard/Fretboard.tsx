@@ -106,11 +106,12 @@ export function Fretboard({
   const targetId = targetPosition ? getPositionId(targetPosition) : null;
 
   return (
-    <div className="w-full min-w-0">
+    <div className="w-full min-w-0 select-none" style={{ WebkitTouchCallout: 'none' }}>
       <svg
         viewBox={`0 0 ${boardWidth} ${boardHeight}`}
         className="w-full h-auto max-h-[160px] sm:max-h-[220px] lg:max-h-[260px]"
         preserveAspectRatio="xMidYMid meet"
+        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
       >
         {/* Background */}
         <rect
