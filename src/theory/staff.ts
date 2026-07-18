@@ -241,6 +241,77 @@ export function quantizeMelody(notes: MelodyNote[], bpm: number = estimateBpm(no
   return { bpm, measures };
 }
 
+// Ticks-per-duration for the non-dotted base durations, keyed off the same
+// table `decomposeTicks` uses, so this can never drift out of sync with what
+// the sheet music actually notates.
+const BASE_TICKS_BY_DURATION: Record<string, number> = Object.fromEntries(
+  DURATION_UNITS.filter((u) => u.dots === 0).map((u) => [u.duration, u.ticks]),
+);
+
+export interface TimedMelodyEvent extends MelodyNote {
+  /** Index into the original (unquantized) `notes` array, for highlighting the matching notehead. */
+  noteIndex: number;
+}
+
+/**
+ * Re-derive note-on/off timings from the *quantized* rhythm (the tokens
+ * actually notated on the sheet music) rather than the raw, often-jittery
+ * timing captured live. Adjacent tokens that share a `noteIndex` (a single
+ * note split across a measure boundary, or into multiple tied duration
+ * values because no single note value covers its tick count) are merged
+ * back into one sustained event, so synth playback doesn't re-trigger a note
+ * mid-sustain.
+ */
+export function quantizedMelodyToTimedEvents(
+  notes: MelodyNote[],
+  quantized: QuantizedMelody,
+): TimedMelodyEvent[] {
+  const gridMs = 60000 / quantized.bpm / TICKS_PER_BEAT;
+  const events: TimedMelodyEvent[] = [];
+  let prevNoteIndex: number | null = null;
+  let ticksSoFar = 0;
+
+  for (const measure of quantized.measures) {
+    for (const tok of measure) {
+      const base = BASE_TICKS_BY_DURATION[tok.duration] ?? 0;
+      const ticks = tok.dots > 0 ? base * 1.5 : base;
+
+      if (tok.noteIndex !== null) {
+        if (tok.noteIndex === prevNoteIndex && events.length > 0) {
+          events[events.length - 1].durationMs += ticks * gridMs;
+        } else {
+          const source = notes[tok.noteIndex];
+          events.push({
+            note: source.note,
+            octave: source.octave,
+            cents: source.cents,
+            startMs: ticksSoFar * gridMs,
+            durationMs: ticks * gridMs,
+            noteIndex: tok.noteIndex,
+          });
+        }
+      }
+      prevNoteIndex = tok.noteIndex;
+      ticksSoFar += ticks;
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Like `findActiveMelodyNoteIndex`, but for a `TimedMelodyEvent[]` derived
+ * from quantized rhythm: returns the original melody `noteIndex` (not a
+ * position in `events`) so it can drive the same sheet-music/fretboard
+ * highlighting as raw playback.
+ */
+export function findActiveTimedEventIndex(events: TimedMelodyEvent[], timeMs: number): number {
+  for (const e of events) {
+    if (timeMs >= e.startMs && timeMs < e.startMs + e.durationMs) return e.noteIndex;
+  }
+  return -1;
+}
+
 export interface ScoreLine {
   /** Measures in this line, each an array of tokens, kept separate so each renders on its own stave with its own bar line. */
   measures: MeasureToken[][];
